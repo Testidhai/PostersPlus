@@ -986,6 +986,12 @@ def _draw_info_strip(image: Image.Image, genre_label: str,
             text, fill = part
             if rating_sep == "star" and part is score_part and run is None:
                 out.append(("★ " if i == 0 else star_sep, _MUTED))
+            elif rating_sep == "bullet_star" and part is score_part and run is None:
+                # The bullet divides as everywhere on the row; the ★ labels
+                # the score.
+                if i:
+                    out.append((sep, _SEPARATOR))
+                out.append(("★ ", _MUTED))
             elif rating_sep == "pip" and part is score_part and i:
                 out.append((_PIP, _MUTED))
             elif i and field_sep == "pip" and part is not score_part:

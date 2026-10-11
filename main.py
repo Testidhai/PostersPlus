@@ -3025,7 +3025,7 @@ def build_request_config(params: dict) -> RequestConfig:
     cfg.landscape_info_scale  = _f("landscape_info_scale",  cfg.landscape_info_scale,  0.5, 2.0)
     cfg.landscape_score_out_of_10 = _b("landscape_score_out_of_10", cfg.landscape_score_out_of_10)
     _lrsep = (params.get("landscape_rating_separator") or "").strip().lower()
-    if _lrsep in ("bullet", "pip", "star"):
+    if _lrsep in ("bullet", "pip", "star", "bullet_star"):
         cfg.landscape_rating_separator = _lrsep
     elif _b("landscape_score_star", False):
         cfg.landscape_rating_separator = "star"
@@ -3157,8 +3157,9 @@ def build_request_config(params: dict) -> RequestConfig:
         cfg.minimalist_separator = _msep
     # "star" only here: it labels the score it sits in front of, so it has
     # nothing to say between a genre and a year.
+    # "bullet_star": the bullet as the separator and a ★ labelling the score.
     _mrsep = (params.get("minimalist_rating_separator") or "").strip().lower()
-    if _mrsep in ("pip", "bullet", "star"):
+    if _mrsep in ("pip", "bullet", "star", "bullet_star"):
         cfg.minimalist_rating_separator = _mrsep
 
     cfg.rating_badges = rating_badges.parse_providers(params.get("rating_badges"))
@@ -5353,10 +5354,14 @@ def _build_poster(
                         # A score leading the line has nothing before it to be
                         # its ★, so it carries one of its own.
                         if (k == "rating" and len(keys) > 1 and isinstance(seg, str)
-                                and cfg.minimalist_rating_separator == "star"):
+                                and cfg.minimalist_rating_separator in ("star", "bullet_star")):
                             seg = f"★ {seg}"
                     elif k == "rating":
                         sep = _score_sep
+                        # Bullet + Star: the bullet divides, the ★ labels the
+                        # score (a badge run labels itself).
+                        if isinstance(seg, str) and cfg.minimalist_rating_separator == "bullet_star":
+                            seg = f"★ {seg}"
                     elif _mode == 0 and {k, keys[i - 1]} == {"genre", "year"}:
                         # Year mode carries the score in the separator's colour, so
                         # that slot has to drop back to a plain field separator when
@@ -5370,11 +5375,15 @@ def _build_poster(
 
             if _mode == 3:   # Split: the score on the far margin, left unless it comes first
                 _group = [k for k in _keys if k != "rating"]
+                # Alone, it has no separator; Bullet + Star still labels it.
+                _lone = _segs.get("rating")
+                if isinstance(_lone, str) and cfg.minimalist_rating_separator == "bullet_star":
+                    _lone = f"★ {_lone}"
                 if "rating" in _segs and _keys[0] == "rating" and _group:
-                    left_parts, parts = [(_segs["rating"], None)], _chain(_group)
+                    left_parts, parts = [(_lone, None)], _chain(_group)
                 else:
                     left_parts = _chain(_group)
-                    parts = [(_segs["rating"], None)] if "rating" in _segs else []
+                    parts = [(_lone, None)] if "rating" in _segs else []
             else:
                 parts = _chain(_keys)
 
@@ -5394,7 +5403,7 @@ def _build_poster(
             # would be nonsense between a genre and a year.  A glyph reserves
             # its own width where the bar has a fixed one, so the choice has to
             # reach the layout below and not just the drawing.
-            _SEP_GLYPH = {"pip": None, "bullet": "•", "star": "★"}
+            _SEP_GLYPH = {"pip": None, "bullet": "•", "star": "★", "bullet_star": "•"}
 
             def _sep_style(role: str) -> str:
                 return (cfg.minimalist_rating_separator if role == "rating"

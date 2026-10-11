@@ -2937,11 +2937,12 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                   <div class="segmented" data-for="cfg-min-separator"></div>
                 </div>
                 <div class="field" id="minimalist-rating-separator-field">
-                  <label class="field-label" id="minimalist-rating-separator-label" data-tip="Glyph immediately before the score. The star labels the number rather than dividing it off, which is why it is only offered here.">Rating Separator</label>
+                  <label class="field-label" id="minimalist-rating-separator-label" data-tip="Glyph immediately before the score. The star labels the number rather than dividing it off, which is why it is only offered here. Bullet + Star does both: a bullet divides the score off like the rest of the line, and a star labels it (Genre • Year • ★ 87).">Rating Separator</label>
                   <select class="segmented-source" id="cfg-min-rating-separator" onchange="build(); queuePreviewReload()">
                     <option value="star" selected>Star</option>
                     <option value="pip">Bar</option>
                     <option value="bullet">Bullet</option>
+                    <option value="bullet_star">Bullet + Star</option>
                   </select>
                   <div class="segmented" data-for="cfg-min-rating-separator"></div>
                 </div>
@@ -3120,11 +3121,12 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                 <div class="segmented" data-for="cfg-landscape-sep"></div>
               </div>
               <div class="field landscape-only" id="landscape-rating-sep-field">
-                <label class="field-label" data-tip="Glyph in front of the score, as Minimalist's Rating Separator is on a portrait. Bullet matches the rest of the line, Bar draws the portrait's bar, and Star labels the score the way Clean does (Genre • Year ★ 87). With Rating Badges on, the star gives way to a bullet, as the badges label the scores themselves.">Rating Separator</label>
+                <label class="field-label" data-tip="Glyph in front of the score, as Minimalist's Rating Separator is on a portrait. Bullet matches the rest of the line, Bar draws the portrait's bar, and Star labels the score the way Clean does (Genre • Year ★ 87), and Bullet + Star does both (Genre • Year • ★ 87). With Rating Badges on, the star gives way to a bullet, as the badges label the scores themselves.">Rating Separator</label>
                 <select class="segmented-source" id="cfg-landscape-rating-sep" onchange="build(); queuePreviewReload()">
                   <option value="bullet" selected>Bullet</option>
                   <option value="pip">Bar</option>
                   <option value="star">Star</option>
+                  <option value="bullet_star">Bullet + Star</option>
                 </select>
                 <div class="segmented" data-for="cfg-landscape-rating-sep"></div>
               </div>
@@ -10319,7 +10321,7 @@ function importUrl(urlStr, { silent = false, settingsOnly = false, preserveClien
     _setEl('cfg-landscape-info-scale', p.get('landscape_info_scale') || '1.00');
     _setEl('tog-landscape-score-10',   p.get('landscape_score_out_of_10') || 'false');
     { const _lrsep = (p.get('landscape_rating_separator') || '').toLowerCase();
-      _setEl('cfg-landscape-rating-sep', ['bullet', 'pip', 'star'].includes(_lrsep) ? _lrsep
+      _setEl('cfg-landscape-rating-sep', ['bullet', 'pip', 'star', 'bullet_star'].includes(_lrsep) ? _lrsep
         : (!['', '0', 'false', 'no'].includes((p.get('landscape_score_star') || '').trim().toLowerCase()) ? 'star' : 'bullet')); }
     _setEl('cfg-landscape-sep', (p.get('landscape_separator') || '').toLowerCase() === 'pip' ? 'pip' : 'bullet');
     _setEl('tog-landscape-info-center', p.get('landscape_info_center') || 'false');

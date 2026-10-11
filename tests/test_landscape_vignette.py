@@ -392,6 +392,33 @@ class LandscapeLogoAndBadgeTests(unittest.TestCase):
         self.assertIn('"landscape_rating_separator": "pip"',
                       sig(main.build_request_config({"landscape_rating_separator": "pip"})))
 
+    def test_bullet_and_star_both(self):
+        # The bullet divides the score off like the rest of the row, and the
+        # star labels it; alone, the score keeps just its star.
+        texts = []
+        real_draw = landscape.ImageDraw.Draw
+
+        def spy(im, *a, **k):
+            d = real_draw(im, *a, **k)
+            real_text = d.text
+            d.text = lambda xy, text, *a, **k: (texts.append(text), real_text(xy, text, *a, **k))[1]
+            return d
+
+        def drawn(genre, year, score):
+            texts.clear()
+            with mock.patch.object(landscape.ImageDraw, "Draw", spy):
+                landscape._draw_info_strip(Image.new("RGBA", (1000, 563)), genre, year,
+                                           score, rating_sep="bullet_star")
+            return list(reversed(texts))
+
+        self.assertEqual(drawn("Drama", "2024", 87), ["Drama", "  •  ", "2024", "  •  ", "★ ", "87"])
+        self.assertEqual(drawn("", None, 87), ["★ ", "87"])
+        self.assertEqual(drawn("Drama", "2024", "N/A"), ["Drama", "  •  ", "2024"])
+        for name in ("landscape_rating_separator", "minimalist_rating_separator"):
+            self.assertEqual(getattr(main.build_request_config({name: "bullet_star"}), name), "bullet_star")
+        self.assertIn('"landscape_rating_separator": "bullet_star"', main._render_config_signature(
+            main.build_request_config({"landscape_rating_separator": "bullet_star"})))
+
     def test_badge_shadow_clips_at_the_canvas_edge(self):
         # A top-left pill's shadow spills past x=0 / y=0; it must be clipped
         # rather than refused, and it must darken the art around the pill.

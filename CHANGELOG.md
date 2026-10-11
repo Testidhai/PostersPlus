@@ -15,6 +15,13 @@
   sliders now show whenever frosted chips or the disc are on, even with a
   dark info badge, which hides them otherwise.
 
+### Bullet + Star rating separator
+
+- **Rating Separator** has a fourth choice, **Bullet + Star**, on portrait
+  (Minimalist) and landscape: a bullet divides the score off like the rest
+  of the line, and a star labels it (`Sci-Fi • 1999 • ★ 84`)
+  (`minimalist_rating_separator` / `landscape_rating_separator=bullet_star`).
+
 ### Landscape Anime Provider Source and Backdrop Pick
 
 - Landscape gets its own **Anime Provider Source**: **Kitsu** uses an
