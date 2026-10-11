@@ -23,7 +23,7 @@
   (`trending_list=l:ko.ja`). Ranks are numbered without gaps after the cut,
   the catalog's name says which languages, and anime lists are unaffected.
 - **Streaming Top 10** in the trending **Configure** dialog: pick a country and a service and
-  add its daily Top 10 as a catalog, for 119 countries and 60+ services:
+  add its daily Top 10 as a catalog, for 119 countries and 80+ services:
   Hulu, Peacock, Tubi, Starz, AMC+ and more in the US, every country's
   Netflix, Disney+, Prime Video, Apple TV+, HBO Max and Paramount+, a real
   Shudder Top 10 in the US, UK and Canada, Crunchyroll's for the anime

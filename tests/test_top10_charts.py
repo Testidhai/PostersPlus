@@ -66,7 +66,6 @@ class IdTests(_Top10):
         self.assertIsNone(top10_charts.parse_id("hulu"))
         self.assertEqual(top10_charts.name("fp_hulu_us"), "Hulu Top 10 (US)")
         self.assertEqual(top10_charts.name("fp_netflix_ww"), "Netflix Top 10 (Worldwide)")
-        self.assertEqual(top10_charts.source_id("hulu", "united-states"), "fp_hulu_us")
 
     def test_offered_where_the_index_has_the_chart(self):
         offered = top10_charts.offered

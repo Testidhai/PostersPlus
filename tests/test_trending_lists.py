@@ -532,15 +532,15 @@ class LanguageFilterTests(_TempDb):
 
     def test_only_the_movie_and_tv_lists_are_cut(self):
         lists = trending_lists.parse("m:imdb,l:en.ko")
-        self.assertEqual(lists.key("movie"), "movie@imdb.h0.anilist.anilist.l-en+ko")
-        self.assertEqual(lists.key("tv"), "tv@tmdb.h0.anilist.anilist.l-en+ko")
+        self.assertEqual(lists.key("movie"), "movie@imdb.h0.anilist.anilist.l+en+ko")
+        self.assertEqual(lists.key("tv"), "tv@tmdb.h0.anilist.anilist.l+en+ko")
         self.assertEqual(lists.key("anime"), "anime")
         for e in ("movie", "tv"):
             endpoint, back = trending_lists.from_key(lists.key(e))
             self.assertEqual((endpoint, back.key(e), back.langs), (e, lists.key(e), ("en", "ko")))
         with mock.patch.object(config, "TRENDING_CATALOGS_ENABLED", False):
             key = lists.key("movie")
-            self.assertEqual(key, "movie@imdb.h0.l-en+ko")
+            self.assertEqual(key, "movie@imdb.h0.l+en+ko")
             self.assertEqual(trending_lists.from_key(key)[1].key("movie"), key)
 
     def test_language_matches(self):
@@ -612,3 +612,24 @@ class ShudderSourceTests(_TempDb):
         self.assertEqual((params["with_watch_providers"], params["watch_region"]), ("99", "US"))
         # A series is new while it airs, whenever it began.
         self.assertIn("air_date.gte", params)
+
+
+class ReviewFixTests2026_10_11(_TempDb):
+    def test_a_source_slug_like_the_language_part_is_still_a_source(self):
+        _Menu(self, TRENDING_SOURCE_CHOICES="anime_movie|L Films|https://x.example/f.json")
+        lists = trending_lists.parse("f:l-films")
+        key = lists.key("movie")
+        self.assertTrue(key.endswith(".anilist.l-films"))
+        endpoint, back = trending_lists.from_key(key)
+        self.assertEqual((back.anime_movie, back.langs, back.key("movie")), ("l-films", (), key))
+
+    def test_a_long_pick_keeps_every_catalog(self):
+        _Menu(self, TRENDING_LIST_SOURCES="imdb,trakt,simkl,justwatch,rottentomatoes,tvstats,top10")
+        movie = ["tmdb", "tmdb_week", "imdb", "trakt", "trakt_digital", "simkl", "simkl_week", "justwatch"]
+        tv = ["tmdb", "tmdb_week", "imdb", "trakt", "simkl", "simkl_week", "justwatch", "rotten_tomatoes"]
+        raw = ("m:" + ".".join(movie) + ",t:" + ".".join(tv) + ",a:anilist.simkl.simkl_week.trakt"
+               + ",f:anilist.trakt,h:1," + "l:en.ja.ko.es.fr.de.hi" + ("," * 300))
+        self.assertGreater(len(raw), 400)
+        lists = trending_lists.parse(raw)
+        self.assertEqual(list(lists.catalogs("tv")), tv)
+        self.assertEqual(lists.langs, ("en", "ja", "ko", "es", "fr", "de", "hi"))

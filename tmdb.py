@@ -2267,7 +2267,12 @@ async def fetch_trending_source_ids(
             if not ids:
                 _trending_payloads.pop(resolved, None)
             elif fresh:
-                _trending_payloads[resolved] = (time.monotonic(), payload)
+                now = time.monotonic()
+                # Only reused briefly: drop what can't be any more.
+                for old in [u for u, (at, _p) in _trending_payloads.items()
+                            if now - at >= _TRENDING_PAYLOAD_REUSE_SECS]:
+                    del _trending_payloads[old]
+                _trending_payloads[resolved] = (now, payload)
         except Exception as exc:
             ids, error = [], exc
         if ids:
@@ -2805,7 +2810,8 @@ async def _ensure_trending_snapshot(
                     # A Streaming Top 10 chart serves its last list rather
                     # than none: one copy of the charts backs them all, so
                     # its going away would otherwise empty every row at once.
-                    stale = get_cached_trending_snapshot_entry(key, include_stale=True)
+                    stale = await asyncio.to_thread(
+                        get_cached_trending_snapshot_entry, key, include_stale=True)
                     if stale is not None and stale[0]:
                         logger.warning(f"Trending {key}: chart unreadable, serving its last list")
                         return stale[0], time.time() + _TRENDING_SOURCE_RETRY_SECS

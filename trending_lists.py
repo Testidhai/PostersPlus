@@ -311,7 +311,8 @@ class TrendingLists:
         if endpoint not in ANIME_ENDPOINTS and anime_split():
             parts += (self.anime, self.anime_movie)
         if endpoint not in ANIME_ENDPOINTS and self.langs:
-            parts += ("l-" + "+".join(self.langs),)
+            # "+" is in no source id, so this part can't be mistaken for one.
+            parts += ("l+" + "+".join(self.langs),)
         return parts
 
     def key(self, endpoint: str) -> str:
@@ -360,7 +361,8 @@ def parse(raw: "str | None") -> TrendingLists:
     base = default()
     if not raw or not config.TRENDING_LIST_CHOICE:
         return base
-    return _parse(raw.strip().lower()[:400], base, top10_charts.version())
+    # Room for every pick there may be: 8 per type of ids up to 32 long.
+    return _parse(raw.strip().lower()[:1200], base, top10_charts.version())
 
 
 @functools.lru_cache(maxsize=256)
@@ -418,7 +420,7 @@ def from_key(key: str) -> "tuple[str, TrendingLists]":
         return endpoint, base
     parts = rest.split(".")
     langs: tuple[str, ...] = ()
-    if parts[-1].startswith("l-"):
+    if parts[-1].startswith("l+"):
         langs = _languages(parts.pop()[2:].split("+"))
     picked = {e: base.source(e) for e in ENDPOINTS}
     home = base.home

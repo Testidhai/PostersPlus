@@ -206,11 +206,6 @@ def parse_id(source: str) -> "tuple[str, str] | None":
     return m.group(1), REGIONS[m.group(2)]
 
 
-def source_id(service: str, region_slug: str) -> str:
-    iso = next(i for i, s in REGIONS.items() if s == region_slug)
-    return f"{_PREFIX}{service}_{iso}"
-
-
 def _sections_for(endpoint: str, service: str, sections) -> bool:
     if (service in _ANIME_SERVICES) != (endpoint in ("anime", "anime_movie")):
         return False
@@ -287,7 +282,11 @@ async def _region(client: httpx.AsyncClient, slug: str) -> dict:
     data = resp.json()
     if not isinstance(data, dict) or not isinstance(data.get("charts"), list):
         raise ValueError("no charts")
-    _charts[slug] = (time.monotonic(), data)
+    now = time.monotonic()
+    # Only reused briefly: drop what can't be any more.
+    for old in [s for s, (at, _d) in _charts.items() if now - at >= _CHART_REUSE_SECS]:
+        del _charts[old]
+    _charts[slug] = (now, data)
     return data
 
 
@@ -326,7 +325,11 @@ async def fetch_ids(
             }.items() if v}
     if not ids:
         _failed_at[cooldown] = time.monotonic()
-        logger.error(f"Top 10 chart {service} in {slug} has no {kind} rows")
+        if chart is None:
+            logger.warning(f"Top 10 charts for {slug} have no {service} chart")
+        else:
+            # A mixed chart that is all films (or all series) today.
+            logger.info(f"Top 10 chart {service} in {slug} has no {kind} rows today")
         return []
     _failed_at.pop(cooldown, None)
     logger.info(f"Trending source for {endpoint}: {len(ids)} titles from {service} Top 10 in {slug}")

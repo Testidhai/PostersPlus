@@ -6778,7 +6778,9 @@ async def _refresh_requested_trending_lists(client: httpx.AsyncClient) -> None:
         else:
             if entry is None:
                 logger.warning(f"Trending fetch: no {key} snapshot this cycle")
-        await asyncio.sleep(_TRENDING_CHOICE_REFRESH_GAP)
+        # The gap is for the public pages (MDBList's), not TMDB or AniList.
+        if lists.url(endpoint).startswith(("http://", "https://")):
+            await asyncio.sleep(_TRENDING_CHOICE_REFRESH_GAP)
 
 
 def _trending_endpoints() -> tuple[str, ...]:
