@@ -630,6 +630,13 @@
     border-radius: var(--radius-sm);
   }
   .callout .field-label { margin-bottom: var(--gap-label); }
+  /* A label sharing its line with a control (the trending addon's heading
+     and its Trending Only toggle): centred on it, no gap of its own. */
+  .field-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-bottom: var(--gap-label);
+  }
+  .callout .field-head > .field-label { margin-block: 0; }
   .callout .field-hint  { margin-top: 0; }
 
   /* Conditional sub-controls revealed under a field (e.g. the custom vignette
@@ -2105,7 +2112,8 @@
       margin-bottom: calc(var(--gap-label) - 11px);
     }
     /* Beside its slider there is no gap below to keep: cancel both sides. */
-    .field:not(.field-row > .field):has(> .field-label + .range-row) > .field-label[data-tip] {
+    .field:not(.field-row > .field):has(> .field-label + .range-row) > .field-label[data-tip],
+    .callout .field-head > .field-label[data-tip] {
       margin-block: -11px;
     }
     .group-title[data-tip] {
@@ -2476,8 +2484,8 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
 
             <!-- Shown when the operator has TRENDING_CATALOGS_ENABLED on. -->
             <div class="field callout" id="trending-catalogs-field" style="display:none;">
-              <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:var(--gap-label);">
-                <label class="field-label" style="margin-bottom:0;" data-tip="Install this in your client, or import it into AIOMetadata as a custom manifest with its cache time set to 0. The rows follow the same list as the Trending sashes, so each poster's &quot;#N Today&quot; matches its place in the row. The URL carries your current poster settings for both shapes, so installed directly its posters (and landscape posters, for clients that show landscape rows) are drawn with them; copy it again after changing settings.">Trending Catalogs Addon</label>
+              <div class="field-head">
+                <label class="field-label" data-tip="Install this in your client, or import it into AIOMetadata as a custom manifest with its cache time set to 0. The rows follow the same list as the Trending sashes, so each poster's &quot;#N Today&quot; matches its place in the row. The URL carries your current poster settings for both shapes, so installed directly its posters (and landscape posters, for clients that show landscape rows) are drawn with them; copy it again after changing settings.">Trending Catalogs Addon</label>
                 <div class="toggle-row" style="margin:0; gap:8px;">
                   <span class="toggle-label" data-tip="On: these catalogs show only each poster's Trending rank (greyscale still applies). Off: your usual sash list. Only works where the app shows this addon's own posters, e.g. installed straight into Stremio: AIOMetadata's global poster pattern and Nuvio's custom poster override swap in your usual posters.">Trending Only</span>
                   <label class="toggle-switch">
@@ -4269,12 +4277,12 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                     aria-label="Report a problem with this poster"
                     data-tip="Report a problem with this poster to whoever runs this instance: text on a textless poster, the wrong art or logo, wrong details."
                     onclick="openReportModal()">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 20.5v-17"/><path d="M6.5 3.5h11l-2 4.25 2 4.25h-11"/></svg>
             </button>
             <a class="icon-btn" id="artwork-edit-link" hidden
                aria-label="Edit this title's artwork in the admin dashboard"
                data-tip="Choose this title's poster, logo and landscape art for everyone, in the admin dashboard.">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="13" height="18" rx="2"/><path d="M3 15l4-4 4 4"/><path d="M14.5 13.5l6-6a1.4 1.4 0 0 0-2-2l-6 6-.8 2.8z"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(1.5 0)"><rect x="3" y="3" width="13" height="18" rx="2"/><path d="M3 15l4-4 4 4"/><path d="M14.5 13.5l6-6a1.4 1.4 0 0 0-2-2l-6 6-.8 2.8z"/></g></svg>
             </a>
             <button type="button" class="icon-btn" id="shape-toggle"
                     aria-pressed="false"
