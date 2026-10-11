@@ -863,6 +863,7 @@ from pxscale import px, pxi, pxr, pxri, fixed, fixedi
 from awards import dominant_frost_rgb, _frosted_tint
 from awards import FETCH_FAILED, _RateLimited, draw_award_badge, draw_award_sash, parse_mdblist_awards, reconcile_cached_awards
 from awards import _SIDE_MARGIN as awards_side_margin, side_chip_band, _notch_heights as notch_heights
+import certifications
 import graphic_badges
 import rating_badges
 import trending_rank
@@ -2017,6 +2018,9 @@ class RequestConfig:
     # Which old badge the "legacy" slot draws — graphic_badges.LEGACY_STYLES.
     # One setting for both shapes.
     badge_legacy_style:       str  = graphic_badges.DEFAULT_LEGACY_STYLE
+    # Whose age certificate the "cert" slot draws: an ISO 3166-1 country code.
+    # One setting for both shapes.
+    badge_cert_country:       str  = certifications.DEFAULT_COUNTRY
 
     movie_weights: dict | None = None
     tv_weights:    dict | None = None
@@ -2810,6 +2814,7 @@ _SIGNATURE_OMIT_AT_DEFAULT = {"poster_width": 500, "rating_badges": "", "rating_
                               "badge_quality_style": graphic_badges.DEFAULT_QUALITY_STYLE,
                               "badge_logo_scale": graphic_badges.LOGO_SCALE_DEFAULT,
                               "badge_legacy_style": graphic_badges.DEFAULT_LEGACY_STYLE,
+                              "badge_cert_country": certifications.DEFAULT_COUNTRY,
                               "landscape_poster_crop": False,
                               "original_labels": "",
                               "anime_provider_art": "provider",
@@ -3233,6 +3238,7 @@ def build_request_config(params: dict) -> RequestConfig:
     _legacy_style = graphic_badges.legacy_style(params.get("badge_legacy_style"))
     if _legacy_style:
         cfg.badge_legacy_style = _legacy_style
+    cfg.badge_cert_country = certifications.country(params.get("badge_cert_country"))
 
     all_sources = list(_cfg.MOVIE_WEIGHTS.keys())
     cfg.movie_weights = _parse_weights(params.get("movie_weights"), all_sources)
@@ -5865,6 +5871,18 @@ def _greyscale_wanted(cfg: "RequestConfig", discovery_meta, quality_tokens: list
     no_quality = (cfg.greyscale_no_quality and cfg.wait_for_quality and not quality_tokens
                   and quality_shown)
     return cinema or no_quality
+
+
+def _certificate(facts: dict | None, country: str) -> str | None:
+    """The age certificate the "cert" slot draws for *country*, from a
+    title's badge facts; None for the age fallback.  Facts cached before every
+    country was kept carry the US certificate alone (fetch_badge_facts fetches
+    them again for any other country)."""
+    if not facts:
+        return None
+    if "certs" in facts:
+        return (facts.get("certs") or {}).get(country)
+    return certifications.display("US", facts.get("cert")) if country == "US" else None
 
 
 def _auto_notch_pos(cfg: "RequestConfig", tokens: list[str], certification: str | None,
@@ -12502,8 +12520,9 @@ async def get_poster(
             # An anime request with a mapped TMDB id gets them too; the anime
             # id standing in for a missing one is rejected by the fetcher.
             if has_tmdb_id:
-                _facts = await fetch_badge_facts(client, tmdb_id, type, effective_tmdb_key)
-                _bp_args["certification"] = (_facts or {}).get("cert") or None
+                _facts = await fetch_badge_facts(client, tmdb_id, type, effective_tmdb_key,
+                                                 rcfg.badge_cert_country)
+                _bp_args["certification"] = _certificate(_facts, rcfg.badge_cert_country)
                 _network, _studio, _streamer = graphic_badges.pick_logos(_facts, type)
                 if _streamer is not None:
                     _path = await fetch_network_logo_path(client, _streamer, effective_tmdb_key)

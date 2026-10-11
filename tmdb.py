@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 import httpx
 import numpy as np
 
+import certifications
 import cinemeta
 import trending_lists
 import top10_charts
@@ -4325,18 +4326,21 @@ def _logo_entries(items: list[dict] | None) -> list[dict]:
 
 
 async def fetch_badge_facts(client: httpx.AsyncClient, tmdb_id: str, media_type: str,
-                            tmdb_key: str | None) -> dict | None:
+                            tmdb_key: str | None, cert_country: str = "US") -> dict | None:
     """The graphic badges' facts about a title: its US certificate ("cert"),
-    and its networks (TV) and production companies with their logo paths.
+    every country's drawable certificate ("certs", see certifications), and
+    its networks (TV) and production companies with their logo paths.
     One TMDB call per title per month — the details, with the release dates
     or content ratings appended.  None when it can't be fetched."""
     endpoint = "tv" if media_type in ("tv", "series") else "movie"
     cache_key = f"{endpoint}_{tmdb_id}"
     cached = get_cached_badge_facts(cache_key)
-    if cached is not None:
+    # Facts cached before every country was kept have the US certificate
+    # alone: fetched again (the same one call) only for another country.
+    if cached is not None and ("certs" in cached or cert_country == "US"):
         return cached
     if not tmdb_key or not (str(tmdb_id).isascii() and str(tmdb_id).isdigit()):
-        return None
+        return cached
     append = "content_ratings" if endpoint == "tv" else "release_dates"
     try:
         logger.info(f"External API Call: TMDB badge facts for {endpoint} {tmdb_id}")
@@ -4346,10 +4350,12 @@ async def fetch_badge_facts(client: httpx.AsyncClient, tmdb_id: str, media_type:
         data = resp.json()
     except Exception as exc:
         logger.warning(f"Badge facts fetch failed for {endpoint} {tmdb_id}: {exc}")
-        return None
+        return cached
     facts = {
         "cert": (us_certification_from_content_ratings(data.get("content_ratings") or {}) if endpoint == "tv"
                  else us_certification_from_release_dates(data.get("release_dates") or {})),
+        "certs": (certifications.certs_from_content_ratings(data.get("content_ratings") or {}) if endpoint == "tv"
+                  else certifications.certs_from_release_dates(data.get("release_dates") or {})),
         "networks": _logo_entries(data.get("networks")),
         "companies": _logo_entries(data.get("production_companies")),
     }

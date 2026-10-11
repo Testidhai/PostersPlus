@@ -34,6 +34,7 @@ from functools import lru_cache
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+import certifications
 from pxscale import px, pxr
 
 logger = logging.getLogger(__name__)
@@ -1248,8 +1249,12 @@ def row_items(tokens: list[str], certification: str | None, age_rating: int | No
         return None
 
     def cert():
-        c = (certification or "").strip().upper()
-        if c in _US_CERTS:
+        # The certificate as its country's board issues it (resolved by the
+        # caller, certifications.display); US ones may come in any case.
+        c = (certification or "").strip()
+        if c.upper() in _US_CERTS:
+            c = c.upper()
+        if certifications.known(c):
             return _box(c, unit_h, False)
         if age_rating:
             return _box(f"{int(age_rating)}+", unit_h, False)

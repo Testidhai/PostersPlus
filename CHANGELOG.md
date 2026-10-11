@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Age rating by country
+
+- The graphic badges' **Certificate** can show any country's age rating
+  instead of the US one: pick **Age Rating Country** under Graphic Badges
+  (`badge_cert_country=GB`), and it shows as that country's board issues
+  it (UK 12A, Germany 16, Australia MA 15+). TMDB already sent every
+  country's rating with the call that fetched the US one, so this costs no
+  extra API calls. A title with no rating for that country shows MDBList's
+  age (`14+`) as before, or nothing.
+
 ### Fixes
 
 - Rating badges can be limited to **Anime Movie** and **Anime TV** separately:

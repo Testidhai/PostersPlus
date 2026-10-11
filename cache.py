@@ -2361,7 +2361,8 @@ def get_cached_badge_facts(cache_key: str) -> dict | None:
         if not row:
             return None
         facts = json.loads(row[0])
-        ttl = _BADGE_FACTS_TTL if facts.get("cert") or facts.get("logo_path") else _BADGE_FACTS_PARTIAL_TTL
+        ttl = (_BADGE_FACTS_TTL if facts.get("cert") or facts.get("certs") or facts.get("logo_path")
+               else _BADGE_FACTS_PARTIAL_TTL)
         if time.time() - row[1] > ttl:
             return None
         return facts

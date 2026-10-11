@@ -11,6 +11,7 @@ from unittest import mock
 import numpy as np
 from PIL import Image
 
+import certifications
 import graphic_badges as gb
 from discovery import DiscoveryMeta
 import main
@@ -887,3 +888,78 @@ class ConfigAndLayoutTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CertificateCountryTests(unittest.TestCase):
+    """badge_cert_country: any country's certificate, from the one call that
+    already brought the US one."""
+
+    MOVIE = {"results": [
+        {"iso_3166_1": "GB", "release_dates": [{"type": 3, "certification": "12A"}]},
+        {"iso_3166_1": "DE", "release_dates": [{"type": 3, "certification": "FSK 12"},
+                                               {"type": 4, "certification": "12"}]},
+        {"iso_3166_1": "US", "release_dates": [{"type": 3, "certification": "NR"},
+                                               {"type": 4, "certification": "PG-13"}]},
+        {"iso_3166_1": "FR", "release_dates": [{"type": 3, "certification": ""}]},
+    ]}
+
+    def test_every_country_keeps_its_first_issued_certificate(self):
+        # Germany's "FSK 12" isn't how TMDB's list spells it: the digital "12" is.
+        self.assertEqual(certifications.certs_from_release_dates(self.MOVIE),
+                         {"GB": "12A", "DE": "12", "US": "PG-13"})
+
+    def test_tv_ratings_are_checked_and_spelt_out_ages_shortened(self):
+        body = {"results": [{"iso_3166_1": "SE", "rating": "Från 11 år"},
+                            {"iso_3166_1": "TH", "rating": "น 13+"},   # not in Inter
+                            {"iso_3166_1": "GB", "rating": "Unrated"},
+                            {"iso_3166_1": "CN", "rating": "12+"}]}   # no board listed
+        self.assertEqual(certifications.certs_from_content_ratings(body), {"SE": "11", "CN": "12+"})
+
+    def test_country_setting(self):
+        read = lambda v: main.build_request_config({"badge_cert_country": v}).badge_cert_country
+        self.assertEqual(read("gb"), "GB")
+        self.assertEqual(read("GBR"), "US")
+        self.assertEqual(main.build_request_config({}).badge_cert_country, "US")
+
+    def test_default_keeps_the_composite_key(self):
+        sig = lambda **p: main._render_config_signature(main.build_request_config(p))
+        self.assertNotIn("badge_cert_country", sig())
+        self.assertNotEqual(sig(), sig(badge_cert_country="GB"))
+
+    def test_picking_from_the_facts(self):
+        facts = {"cert": "PG-13", "certs": {"US": "PG-13", "GB": "12A"}}
+        self.assertEqual(main._certificate(facts, "GB"), "12A")
+        self.assertIsNone(main._certificate(facts, "DE"))   # MDBList's age instead, never the US one
+        old = {"cert": "PG-13"}
+        self.assertEqual(main._certificate(old, "US"), "PG-13")
+        self.assertIsNone(main._certificate({"cert": "Unrated"}, "US"))
+        self.assertIsNone(main._certificate(old, "GB"))
+
+    def test_any_countrys_certificate_is_drawn(self):
+        slots = lambda c: [s for s, _ in gb.row_items([], c, None, 30, ("cert",))]
+        self.assertEqual(slots("12A"), ["cert"])
+        self.assertEqual(slots("MA 15+"), ["cert"])
+        self.assertEqual(slots("Unrated"), [])
+
+    def test_old_facts_are_fetched_again_only_for_another_country(self):
+        class Resp:
+            def raise_for_status(self): pass
+            def json(self): return {"release_dates": CertificateCountryTests.MOVIE}
+
+        class Client:
+            calls = 0
+            async def get(self, *a, **kw):
+                Client.calls += 1
+                return Resp()
+
+        old = {"cert": "PG-13", "networks": [], "companies": []}
+        with mock.patch.object(tmdb, "get_cached_badge_facts", return_value=old), \
+                mock.patch.object(tmdb, "set_cached_badge_facts") as store:
+            self.assertIs(asyncio.run(tmdb.fetch_badge_facts(Client(), "1", "movie", "k")), old)
+            self.assertEqual(Client.calls, 0)
+            facts = asyncio.run(tmdb.fetch_badge_facts(Client(), "1", "movie", "k", "GB"))
+        self.assertEqual(Client.calls, 1)
+        self.assertEqual(facts["certs"]["GB"], "12A")
+        self.assertEqual(facts["certs"]["US"], "PG-13")   # the first one the board issues
+        self.assertEqual(facts["cert"], "NR")             # as it always was
+        store.assert_called_once()
