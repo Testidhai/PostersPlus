@@ -912,8 +912,11 @@ class CertificateCountryTests(unittest.TestCase):
         body = {"results": [{"iso_3166_1": "SE", "rating": "Från 11 år"},
                             {"iso_3166_1": "TH", "rating": "น 13+"},   # not in Inter
                             {"iso_3166_1": "GB", "rating": "Unrated"},
-                            {"iso_3166_1": "CN", "rating": "12+"}]}   # no board listed
-        self.assertEqual(certifications.certs_from_content_ratings(body), {"SE": "11", "CN": "12+"})
+                            {"iso_3166_1": "CN", "rating": "12+"},    # no board listed
+                            {"iso_3166_1": "KZ", "rating": "TBC"},
+                            {"iso_3166_1": "US", "rating": "tv-ma"}]}
+        self.assertEqual(certifications.certs_from_content_ratings(body),
+                         {"SE": "11", "CN": "12+", "US": "TV-MA"})
 
     def test_country_setting(self):
         read = lambda v: main.build_request_config({"badge_cert_country": v}).badge_cert_country

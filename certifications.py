@@ -133,6 +133,7 @@ _RELEASE_ORDER = (3, 2, 4, 5, 6, 1)
 # Longest certificate drawn: the box is a badge, not a label.
 _MAX_LEN = 8
 _UNLISTED_OK = re.compile(r"^[0-9A-Za-z][0-9A-Za-z+/ -]{0,5}$")
+_NOT_A_RATING = {"NR", "UR", "NA", "N/A", "TBC", "TBA"}
 _INTER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "Inter-Bold.ttf")
 # Sweden's TV ratings are spelt out; its film ratings are the bare age.
 _SPELT_AGE = re.compile(r"^Från (\d+) år$")
@@ -151,9 +152,11 @@ def display(iso: str, cert: str | None) -> str | None:
         return None
     listed = OFFICIAL.get(iso)
     if listed is not None:
-        if c not in listed[0] and c not in listed[1]:
+        # Matched in any case, drawn in the board's own spelling ("pg-13").
+        c = next((x for x in (*listed[0], *listed[1]) if x.casefold() == c.casefold()), None)
+        if c is None:
             return None
-    elif not _UNLISTED_OK.match(c) or c.upper() in ("NR", "UR"):
+    elif not _UNLISTED_OK.match(c) or c.upper() in _NOT_A_RATING:
         return None
     m = _SPELT_AGE.match(c)
     if m:
