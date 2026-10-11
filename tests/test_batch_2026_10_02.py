@@ -342,6 +342,7 @@ class OneListPerTitleTests(_TempTable):
         cache._local.conn = None
         cache.init_db()
         tmdb._trending_source_failed_at.clear()
+        tmdb._trending_payloads.clear()
 
     def tearDown(self):
         conn = getattr(cache._local, "conn", None)

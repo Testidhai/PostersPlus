@@ -1985,11 +1985,12 @@
   .tl-opt.on { border-color: var(--gold-dim); color: var(--text-primary); }
   .tl-opt input { accent-color: var(--gold); margin: 0; }
   .tl-opt-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  .tl-rank { cursor: pointer; }
   .tl-opt-name em { font-style: normal; color: var(--text-secondary); }
-  .tl-rank { display: none; align-items: center; gap: 4px; font-size: 10px; color: var(--text-secondary); }
-  /* Only a choice once a type has two lists ticked. */
-  .tl-opts.multi .tl-opt.on .tl-rank { display: inline-flex; }
+  /* Which ticked list posters drawn through the poster URL rank on: only a
+     choice once a type has two lists ticked. */
+  .tl-rank-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+  .tl-rank-row[hidden] { display: none; }
+  .tl-rank-row select { flex: 1; min-width: 0; max-width: 280px; }
   .report-cats { display: flex; flex-direction: column; gap: 6px; }
   .report-cats label {
     display: flex; align-items: center; gap: 10px; cursor: pointer;
@@ -6528,15 +6529,25 @@ function updateTrendingCatalogsField() {
 const _TL_ENDPOINTS = ['movie', 'tv', 'anime', 'anime_movie'];
 const _TL_LETTER = { movie: 'm', tv: 't', anime: 'a', anime_movie: 'f' };
 const _TL_NAMES  = { movie: 'Movies', tv: 'Series', anime: 'Anime', anime_movie: 'Anime Movies' };
-// { movie: [ranking source, ...other catalogs], ..., home }
+// The original languages the movie and TV lists are cut down to, in the
+// menu's order; none is all, as English with every other language is
+// (trending_lists._languages).
+function _tlLanguages(codes) {
+  const menu = (serverCaps.trending_lists.languages || []).map(l => l.id);
+  const picked = new Set(codes);
+  const langs = menu.filter(c => picked.has(c));
+  return langs.includes('en') && langs.includes('non-en') ? [] : langs;
+}
+// { movie: [ranking source, ...other catalogs], ..., home, langs }
 function parseTrendingList(raw) {
   const caps = serverCaps.trending_lists;
   if (!caps) return null;
-  const out = { home: !!caps.home_default };
+  const out = { home: !!caps.home_default, langs: [] };
   for (const e of _TL_ENDPOINTS) out[e] = [caps.lists[e].default];
   for (const part of String(raw || '').toLowerCase().split(',')) {
     const [k, v] = part.split(':').map(x => (x || '').trim());
     if (k === 'h') { if (v === '0' || v === '1') out.home = v === '1'; continue; }
+    if (k === 'l') { out.langs = _tlLanguages((v || '').split('.').map(x => x.trim())); continue; }
     const e = _TL_ENDPOINTS.find(x => _TL_LETTER[x] === k);
     if (!e) continue;
     if (v === 'none') { out[e] = []; continue; }
@@ -6557,6 +6568,7 @@ function trendingListToken(pick) {
     parts.push(`${_TL_LETTER[e]}:${picks.length ? picks.join('.') : 'none'}`);
   }
   if (pick.home !== !!caps.home_default) parts.push(`h:${pick.home ? 1 : 0}`);
+  if (pick.langs && pick.langs.length) parts.push(`l:${pick.langs.join('.')}`);
   return parts.join(',');
 }
 // The saved pick, re-read against the menu: a choice the instance no longer
@@ -6573,7 +6585,11 @@ function trendingListSummary(pick) {
   if (!pick || !caps) return '';
   const lists = _TL_ENDPOINTS.filter(e => caps.lists[e].choices.length > 1 || !pick[e].length).map(e =>
     `${_TL_NAMES[e]}: ${pick[e].length ? pick[e].map(id => _tlName(e, id)).join(', ') : 'none'}`);
-  return lists.join(' · ') + (pick.home ? ' · Out at home only' : '');
+  const langName = id => ((caps.languages || []).find(l => l.id === id) || {}).name || id;
+  const langs = (pick.langs || []).length
+    ? ` · ${pick.langs.length <= 2 ? pick.langs.map(langName).join(', ') : pick.langs.length + ' languages'} only`
+    : '';
+  return lists.join(' · ') + (pick.home ? ' · Out at home only' : '') + langs;
 }
 function _fillTrendingListsModal(pick) {
   const caps = serverCaps.trending_lists;
@@ -6587,14 +6603,15 @@ function _fillTrendingListsModal(pick) {
                    onchange="_tlSync('${e}')">
             <span>${esc(ch.name)}${ch.id === caps.lists[e].default ? ' <em>(default)</em>' : ''}</span>
           </label>
-          <label class="tl-rank" title="Posters drawn through your poster URL show their rank on this list, in every row">
-            <input type="radio" name="tl-rank-${e}" value="${esc(ch.id)}"${pick[e][0] === ch.id ? ' checked' : ''}>Poster URL
-          </label>
         </div>`).join('');
     return `
     <div class="field">
-      <label class="field-label" data-tip="Each list ticked is a catalog of its own, its posters numbered by that list. Posters drawn through your poster URL show their rank on the one marked Poster URL, in every row.">${_TL_NAMES[e]}</label>
+      <label class="field-label" data-tip="Each list ticked is a catalog of its own, its posters numbered by that list. Posters drawn through your poster URL show their rank on the one chosen under Poster URL, in every row.">${_TL_NAMES[e]}</label>
       <div class="tl-opts" id="tl-opts-${e}">${opts}</div>
+      <div class="tl-rank-row" id="tl-rank-row-${e}" hidden>
+        <label for="tl-rank-${e}" data-tip="Posters drawn through your poster URL (AIOMetadata's poster pattern, Nuvio's override) can show only one rank: their rank on this list, in every row.">Poster URL ranks on</label>
+        <select id="tl-rank-${e}" data-want="${esc(pick[e][0] || '')}"></select>
+      </div>
     </div>`;
   });
   rows.push(`
@@ -6605,12 +6622,28 @@ function _fillTrendingListsModal(pick) {
         <option value="1"${pick.home ? ' selected' : ''}>Leave Off${caps.home_default ? ' (default)' : ''}</option>
       </select>
     </div>`);
+  if ((caps.languages || []).length) {
+    const on = new Set(pick.langs || []);
+    rows.push(`
+    <div class="field">
+      <label class="field-label" data-tip="Keep only titles first made in these languages on the Movies and Series lists, ranked 1, 2, 3 without gaps. None ticked keeps every language. Anime lists are not affected.">Original Language</label>
+      <div class="tl-opts" id="tl-langs">${caps.languages.map(l => `
+        <div class="tl-opt${on.has(l.id) ? ' on' : ''}">
+          <label class="tl-opt-name">
+            <input type="checkbox" data-tl-lang value="${esc(l.id)}"${on.has(l.id) ? ' checked' : ''}
+                   onchange="this.closest('.tl-opt').classList.toggle('on', this.checked)">
+            <span>${esc(l.name)}</span>
+          </label>
+        </div>`).join('')}</div>
+    </div>`);
+  }
   document.getElementById('trending-lists-fields').innerHTML = rows.join('');
   document.getElementById('trending-lists-msg').hidden = true;
   _TL_ENDPOINTS.forEach(_tlSync);
 }
-// The Poster URL choice is offered on ticked lists only (shown once two are), and one of them always
-// has it; ticking stops at the most catalogs a list may have.
+// The Poster URL dropdown offers the ticked lists only (shown once two are),
+// keeping its choice while that list stays ticked; ticking stops at the most
+// catalogs a list may have.
 function _tlSync(e) {
   const box = document.getElementById(`tl-opts-${e}`);
   if (!box) return;
@@ -6619,15 +6652,14 @@ function _tlSync(e) {
   const on = ticks.filter(t => t.checked);
   ticks.forEach(t => {
     t.disabled = !t.checked && on.length >= max;
-    const radio = t.closest('.tl-opt').querySelector('input[type="radio"]');
-    radio.disabled = !t.checked;
-    if (!t.checked) radio.checked = false;
     t.closest('.tl-opt').classList.toggle('on', t.checked);
   });
-  if (on.length && !box.querySelector('input[type="radio"]:checked')) {
-    on[0].closest('.tl-opt').querySelector('input[type="radio"]').checked = true;
-  }
-  box.classList.toggle('multi', on.length > 1);
+  const sel = document.getElementById(`tl-rank-${e}`);
+  const want = sel.value || sel.dataset.want;
+  sel.innerHTML = '';
+  for (const t of on) sel.add(new Option(_tlName(e, t.value), t.value));
+  sel.value = on.some(t => t.value === want) ? want : (on[0] ? on[0].value : '');
+  document.getElementById(`tl-rank-row-${e}`).hidden = on.length < 2;
 }
 function openTrendingListsModal() {
   if (!serverCaps.trending_lists) return;
@@ -6645,11 +6677,14 @@ function resetTrendingListsModal() {
   _fillTrendingListsModal(parseTrendingList(''));
 }
 function applyTrendingLists() {
-  const pick = { home: vEl('tl-home') === '1' };
+  const pick = {
+    home: vEl('tl-home') === '1',
+    langs: _tlLanguages([...document.querySelectorAll('input[data-tl-lang]:checked')].map(t => t.value)),
+  };
   for (const e of _TL_ENDPOINTS) {
     const box = document.getElementById(`tl-opts-${e}`);
     const on = [...box.querySelectorAll('input[type="checkbox"]:checked')].map(t => t.value);
-    const rank = box.querySelector('input[type="radio"]:checked')?.value;
+    const rank = vEl(`tl-rank-${e}`);
     // The ranking list first, the rest in the menu's order.
     pick[e] = rank && on.includes(rank) ? [rank, ...on.filter(id => id !== rank)] : on;
   }

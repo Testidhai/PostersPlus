@@ -881,6 +881,7 @@ from cache import (
     pop_trending_turnover_replay,
     get_cached_trending_details,
     prune_trending_choices,
+    requested_trending_lists,
     next_trending_fetch_at,
     get_cached_movie_release_info,
     get_cached_quality,
@@ -967,6 +968,7 @@ from tmdb import composite_logo, logo_centre_y, fetch_logo, image_language_order
 # How long a poster rendered while its trending list was unreadable is kept:
 # the same as that list's retry cooldown.
 from tmdb import _TRENDING_SOURCE_RETRY_SECS as _TRENDING_UNREAD_TTL
+from tmdb import trending_source_signature
 
 import tvdb
 import anime
@@ -6670,8 +6672,9 @@ async def _run_trending_fetch_cycle(client: httpx.AsyncClient) -> None:
     still correct.  The same check makes this safe to run in every worker.
     """
     logger.info("Starting scheduled trending fetch cycle")
-    # Lists visitors picked are rebuilt when next asked for, not here: the
-    # loop keeps only the operator's warm, and drops the picks gone quiet.
+    # Lists visitors picked are kept warm while they are in use (below); the
+    # picks gone quiet are rebuilt when next asked for, and dropped after a
+    # while.
     await asyncio.to_thread(prune_trending_choices, _TRENDING_CHOICE_MAX_AGE)
 
     # Build the set of trending (tmdb_id, type) pairs. TV titles are cached under
@@ -6707,6 +6710,8 @@ async def _run_trending_fetch_cycle(client: httpx.AsyncClient) -> None:
             ids = {k for k in ids if not k.startswith("anilist:")} | {
                 str(t) for t in (tmdb_tv if types[0] == "tv" else tmdb_movie)}
         trending_pairs.update((tid, mt) for tid in ids for mt in types)
+    # Before the replay below: a pick's rebuild sets its turnover aside too.
+    await _refresh_requested_trending_lists(client)
     # The composites of titles whose rank changed were deleted when the new
     # snapshot was written (invalidate_trending_turnover), so the scan below
     # can't find them; their requests were set aside for this replay.
@@ -6730,6 +6735,46 @@ async def _run_trending_fetch_cycle(client: httpx.AsyncClient) -> None:
 
 # A list a visitor picked that nobody has asked for in this long is deleted.
 _TRENDING_CHOICE_MAX_AGE = 7 * 86400
+# One asked for within this long is refreshed by the trending loop, so the
+# catalog request after it expires isn't the one kept waiting on the rebuild.
+_TRENDING_CHOICE_WARM_SECS = 2 * 86400
+# Between those refreshes: most picks are MDBList pages, which throttle a
+# burst from one address.
+_TRENDING_CHOICE_REFRESH_GAP = 1.5
+
+
+def _warm_trending_choices() -> "list[tuple[str, str, trending_lists.TrendingLists]]":
+    """(key, endpoint, lists) of each visitor's list the loop keeps warm: one
+    asked for lately that the menu still offers.  The anime lists first, as
+    the movie and TV lists are built against them."""
+    if not _cfg.TRENDING_LIST_CHOICE:
+        return []
+    out = []
+    for key in requested_trending_lists(time.time() - _TRENDING_CHOICE_WARM_SECS):
+        endpoint, lists = trending_lists.from_key(key)
+        if endpoint not in trending_lists.ENDPOINTS or lists.key(endpoint) != key:
+            continue
+        if lists.source(endpoint) not in trending_lists.pickable(endpoint):
+            continue
+        out.append((key, endpoint, lists))
+    return sorted(out, key=lambda c: (c[1] not in ANIME_ENDPOINTS, c[0]))
+
+
+async def _refresh_requested_trending_lists(client: httpx.AsyncClient) -> None:
+    """Rebuild each warm visitor's list that is due, one at a time."""
+    for key, endpoint, lists in await asyncio.to_thread(_warm_trending_choices):
+        if await asyncio.to_thread(get_cached_trending_snapshot_entry, key,
+                                   trending_source_signature(endpoint, lists)):
+            continue
+        try:
+            entry = await ensure_trending_snapshot(client, _cfg.SERVER_TMDB_KEY, endpoint, lists,
+                                                   note_request=False)
+        except Exception as exc:
+            logger.error(f"Trending fetch: {key} refresh failed: {exc}")
+        else:
+            if entry is None:
+                logger.warning(f"Trending fetch: no {key} snapshot this cycle")
+        await asyncio.sleep(_TRENDING_CHOICE_REFRESH_GAP)
 
 
 def _trending_endpoints() -> tuple[str, ...]:
@@ -6758,6 +6803,10 @@ def _seconds_until_trending_due() -> float:
             # A list that has never been read (its first read failed) is as
             # past due as one whose refresh failed.
             expiries.append(now)
+    for key, _endpoint, _lists in _warm_trending_choices():
+        entry = get_cached_trending_snapshot_entry(key, include_stale=True)
+        if entry is not None:
+            expiries.append(entry[1])
     due = min(expiries) if expiries else now + 86400
     if due <= now:
         due = now + 3600
@@ -7410,14 +7459,20 @@ def _trending_catalog_specs(lists: "trending_lists.TrendingLists") -> "list[tupl
     nothing has the catalogs it always had; another source's id names it
     ("pp.trending.movie.imdb"), whatever else was picked beside it."""
     out = []
+    langs = dict(trending_lists.LANGUAGES)
     for cid, ctype, endpoint, name in _TRENDING_CATALOGS:
         picks = lists.catalogs(endpoint)
+        # A row cut down to some languages says which.
+        lang_note = ""
+        if lists.langs and endpoint not in ANIME_ENDPOINTS:
+            lang_note = (" · " + ", ".join(langs[c] for c in lists.langs) if len(lists.langs) <= 2
+                         else f" · {len(lists.langs)} Languages")
         for source in picks:
             plain = source == trending_lists.default_source(endpoint)
             out.append((
                 cid if plain else f"{cid}.{source}", ctype, endpoint, source,
-                name if plain and len(picks) == 1
-                else f"{name} · {trending_lists.source_name(endpoint, source)}",
+                (name if plain and len(picks) == 1
+                 else f"{name} · {trending_lists.source_name(endpoint, source)}") + lang_note,
             ))
     return out
 

@@ -50,6 +50,7 @@ from cache import (
     set_cached_trending_snapshot,
     expire_trending_snapshot,
     trending_list_keys,
+    note_trending_list_requested,
     get_cached_tmdb_poster,
     set_cached_tmdb_poster,
     get_cached_tmdb_logo,
@@ -1923,6 +1924,10 @@ async def fetch_logo_image(client: httpx.AsyncClient, logo_path: str) -> Image.I
 
 
 _trending_inflight: dict[str, asyncio.Event] = {}
+# When each visitor's list was last noted as asked for, per worker: the note
+# is a write, and the rank lookup asks once per poster.
+_TRENDING_REQUEST_NOTE_SECS = 3600
+_trending_request_noted_at: dict[str, float] = {}
 
 # ---------------------------------------------------------------------------
 # Operator-supplied trending sources
@@ -2034,6 +2039,12 @@ def _normalise_trending_url(url: str) -> str:
 # clears well inside the snapshot TTL.
 _TRENDING_SOURCE_RETRY_SECS = 300
 _trending_source_failed_at: dict[str, float] = {}
+# A source's payload, reused for a while: one URL backs several stored lists
+# (a visitor's pick with and without the home filter, or beside other anime
+# lists), and the trending loop refreshing them one after another should read
+# it once.  Kept briefly, as the lists themselves only change daily or hourly.
+_TRENDING_PAYLOAD_REUSE_SECS = 600
+_trending_payloads: dict[str, tuple[float, object]] = {}
 # A failed trending read is tried once more after this pause before the list
 # is given up on for the cooldown above.  Most failures are a blip (a timeout,
 # a 5xx, a throttle), and giving up costs every poster its rank until the next
@@ -2201,6 +2212,7 @@ async def fetch_trending_source_ids(
     media_type: str,
     details_out: dict | None = None,
     url: str | None = None,
+    tmdb_key: str = "",
 ) -> list[str] | None:
     """Ordered TMDB ids from the operator's trending source.
 
@@ -2216,6 +2228,8 @@ async def fetch_trending_source_ids(
     url = operator_url if url is None else url
     if not url:
         return None
+    if url.startswith(trending_lists.PROVIDER_SCHEME):
+        return await _fetch_tmdb_provider_ids(client, tmdb_key, media_type, url, details_out)
     # The operator's source keeps the cooldown it always had; a chosen one
     # has its own, so one broken list doesn't silence the others.
     cooldown = media_type if url == operator_url else (
@@ -2234,13 +2248,23 @@ async def fetch_trending_source_ids(
     for attempt in (1, 2):
         error = None
         try:
-            logger.info(f"External API Call: trending source for {media_type} ({shown})")
-            # Redirects are followed here specifically: an operator pastes whatever
-            # their browser showed them, and a host that answers on a canonical
-            # form should not read as a broken config.
-            resp = await client.get(resolved, timeout=20.0, follow_redirects=True)
-            resp.raise_for_status()
-            ids = _parse_trending_payload(resp.json(), media_type, details_out)
+            held = _trending_payloads.get(resolved)
+            fresh = held is None or time.monotonic() - held[0] >= _TRENDING_PAYLOAD_REUSE_SECS
+            if not fresh:
+                payload = held[1]
+            else:
+                logger.info(f"External API Call: trending source for {media_type} ({shown})")
+                # Redirects are followed here specifically: an operator pastes whatever
+                # their browser showed them, and a host that answers on a canonical
+                # form should not read as a broken config.
+                resp = await client.get(resolved, timeout=20.0, follow_redirects=True)
+                resp.raise_for_status()
+                payload = resp.json()
+            ids = _parse_trending_payload(payload, media_type, details_out)
+            if not ids:
+                _trending_payloads.pop(resolved, None)
+            elif fresh:
+                _trending_payloads[resolved] = (time.monotonic(), payload)
         except Exception as exc:
             ids, error = [], exc
         if ids:
@@ -2274,6 +2298,7 @@ async def fetch_trending_source_ids(
 async def _fetch_tmdb_trending_ids(
     client: httpx.AsyncClient, tmdb_key: str, endpoint: str,
     details_out: dict | None = None, *, window: str = "day", home: bool | None = None,
+    deep: bool = False,
 ) -> list[str] | None:
     """TMDB's trending ids for *endpoint* over *window* ("day" or "week"),
     pages 1-5 (1-10 when unreleased titles (*home*) or anime are left out, to
@@ -2290,6 +2315,9 @@ async def _fetch_tmdb_trending_ids(
     if home is None:
         home = trending_lists.default().home
     pages_n = 10 if (home or TRENDING_HIDE_GENRES or anime_split()) else 5
+    # A list cut down to a few languages (*deep*) keeps a small share of it.
+    if deep:
+        pages_n = 20
     logger.info(f"External API Call: Refreshing TMDB trending {endpoint}/{window} snapshot "
                 f"(pages 1-{pages_n} concurrent)")
 
@@ -2317,6 +2345,64 @@ async def _fetch_tmdb_trending_ids(
                 ids.append(entry_id)
                 if details_out is not None:
                     details_out[entry_id] = _trending_item_details(item)
+    return ids
+
+
+# "New on <service>": what came out (for TV, aired an episode) this long ago
+# at most.
+_PROVIDER_NEW_DAYS = 730
+# Pages of TMDB's discover read for a service's list, 20 titles each.
+_PROVIDER_PAGES = 10
+
+
+async def _fetch_tmdb_provider_ids(
+    client: httpx.AsyncClient, tmdb_key: str, media_type: str, url: str,
+    details_out: dict | None = None,
+) -> list[str]:
+    """What streams on a service ("tmdb-provider:<id>[:new]", see
+    trending_lists) in the US, by TMDB popularity, from TMDB's discover.
+    [] when it can't be read, as for any chosen source."""
+    provider, _, flavour = url[len(trending_lists.PROVIDER_SCHEME):].partition(":")
+    kind = trending_kind(media_type)
+    cooldown = f"{media_type}:{url}"
+    if not tmdb_key or _trending_cooling_down(cooldown):
+        return []
+    params = {
+        "api_key": tmdb_key, "watch_region": "US", "with_watch_providers": provider,
+        "with_watch_monetization_types": "flatrate", "sort_by": "popularity.desc",
+    }
+    if flavour == "new":
+        since = _date.fromordinal(_date.today().toordinal() - _PROVIDER_NEW_DAYS).isoformat()
+        # A series counts while it airs: a new season of an older show is new.
+        params["air_date.gte" if kind == "tv" else "primary_release_date.gte"] = since
+
+    async def _page(page: int) -> dict:
+        resp = await client.get(f"https://api.themoviedb.org/3/discover/{kind}",
+                                params={**params, "page": page})
+        resp.raise_for_status()
+        return resp.json()
+
+    logger.info(f"External API Call: TMDB discover for {media_type} ({url})")
+    try:
+        first = await _page(1)
+        last = min(int(first.get("total_pages") or 1), _PROVIDER_PAGES)
+        pages = [first, *await asyncio.gather(*(_page(n) for n in range(2, last + 1)))]
+    except Exception as exc:
+        _trending_source_failed_at[cooldown] = time.monotonic()
+        logger.error(f"TMDB discover for {media_type} ({url}) failed: {exc}")
+        return []
+    _trending_source_failed_at.pop(cooldown, None)
+    seen: set[str] = set()
+    ids: list[str] = []
+    for page in pages:
+        for item in page.get("results") or []:
+            entry_id = str(item.get("id") or "")
+            if entry_id.isdigit() and entry_id not in seen:
+                seen.add(entry_id)
+                ids.append(entry_id)
+                if details_out is not None:
+                    details_out[entry_id] = _trending_item_details(item)
+    logger.info(f"Trending source for {media_type}: {len(ids)} titles from {url}")
     return ids
 
 
@@ -2418,6 +2504,53 @@ def _note_tmdb_date(detail: dict, meta) -> None:
 
 # Titles whose genres are looked up at once.
 _GENRE_BATCH = 50
+
+
+async def _in_languages(
+    client: httpx.AsyncClient, tmdb_key: str, endpoint: str, ids: list[str],
+    details: dict[str, dict], langs: "tuple[str, ...]", limit: int | None = None,
+) -> list[str]:
+    """*ids* cut down to titles of the original languages *langs* picks (see
+    trending_lists.language_matches).  The language comes off the list's own
+    row (TMDB's carry it); a row without it is looked up in the title
+    metadata the posters cache, and left off when that fails, as its
+    language can't be told.  Read in batches, stopping once *limit* are kept,
+    as _without_hidden_genres is."""
+    kind = trending_kind(endpoint)
+    sem = asyncio.Semaphore(8)
+
+    async def lang_of(entry_id: str) -> "str | None":
+        detail = details.get(entry_id) or {}
+        if detail.get("lang"):
+            return detail["lang"]
+        if not tmdb_key:
+            return None
+        async with sem:
+            try:
+                meta = await fetch_poster_metadata(client, entry_id, tmdb_key, kind)
+            except Exception as exc:
+                logger.warning(f"Trending: no language for {kind} {entry_id}: {exc}")
+                return None
+        lang = (meta[7] or {}).get("original_language")
+        if lang:
+            detail["lang"] = lang
+        # The genre filter after this needs no second lookup.
+        detail.setdefault("genres", list(meta[0]))
+        _note_tmdb_date(detail, meta)
+        details[entry_id] = detail
+        return lang
+
+    kept: list[str] = []
+    checked = 0
+    for start in range(0, len(ids), _GENRE_BATCH):
+        batch = ids[start:start + _GENRE_BATCH]
+        checked += len(batch)
+        found = await asyncio.gather(*(lang_of(i) for i in batch))
+        kept += [i for i, lang in zip(batch, found) if trending_lists.language_matches(lang, langs)]
+        if limit is not None and len(kept) >= limit:
+            break
+    logger.info(f"Trending {endpoint}: kept {len(kept)} of {checked} title(s) in {'/'.join(langs)}")
+    return kept
 
 
 async def _without_hidden_genres(
@@ -2561,6 +2694,31 @@ async def ensure_trending_snapshot(
     tmdb_key: str,
     endpoint: str,
     lists: "trending_lists.TrendingLists | None" = None,
+    *,
+    note_request: bool = True,
+) -> "tuple[dict[str, int], float] | None":
+    """See _ensure_trending_snapshot.  A visitor's list read for a request
+    (*note_request*, not the trending loop's refresh) is noted as asked for,
+    so the loop keeps it warm while it is in use."""
+    entry = await _ensure_trending_snapshot(client, tmdb_key, endpoint, lists,
+                                            note_request=note_request)
+    key = (lists or trending_lists.default()).key(endpoint)
+    if note_request and entry is not None and "@" in key:
+        now = time.monotonic()
+        noted = _trending_request_noted_at.get(key)
+        if noted is None or now - noted >= _TRENDING_REQUEST_NOTE_SECS:
+            _trending_request_noted_at[key] = now
+            await asyncio.to_thread(note_trending_list_requested, key)
+    return entry
+
+
+async def _ensure_trending_snapshot(
+    client: httpx.AsyncClient,
+    tmdb_key: str,
+    endpoint: str,
+    lists: "trending_lists.TrendingLists | None",
+    *,
+    note_request: bool,
 ) -> "tuple[dict[str, int], float] | None":
     """The current (rankings, expires_at) for *endpoint*, fetched only if the
     stored snapshot has expired or came from another source.
@@ -2631,7 +2789,8 @@ async def ensure_trending_snapshot(
         # A configured-but-broken source serves no ranks, so the sash
         # goes quiet instead of falling back to TMDB and looking like
         # the config worked.
-        source_ids = await fetch_trending_source_ids(client, endpoint, details, url=source_url)
+        source_ids = await fetch_trending_source_ids(client, endpoint, details, url=source_url,
+                                                     tmdb_key=tmdb_key)
         if source_ids is not None:
             if not source_ids:
                 # Deliberately NOT cached.  Writing an empty snapshot
@@ -2652,7 +2811,8 @@ async def ensure_trending_snapshot(
                 return None
             ids = await _read_twice(
                 lambda: _fetch_tmdb_trending_ids(client, tmdb_key, endpoint, details,
-                                                 window=window, home=lists.home),
+                                                 window=window, home=lists.home,
+                                                 deep=bool(lists.langs)),
                 f"TMDB {endpoint}",
             )
             if not ids:
@@ -2663,11 +2823,15 @@ async def ensure_trending_snapshot(
         if endpoint not in ANIME_ENDPOINTS and anime_split():
             # The anime lists first, so their titles can be left off this one.
             for anime_endpoint in ANIME_ENDPOINTS:
-                await ensure_trending_snapshot(client, tmdb_key, anime_endpoint, lists)
+                await ensure_trending_snapshot(client, tmdb_key, anime_endpoint, lists,
+                                               note_request=note_request)
             ids = _without_anime(endpoint, ids, details,
                                  _anime_list_tmdb_ids(trending_kind(endpoint), lists))
         # Twice the list's length while unreleased titles are left out after.
         limit = max(TRENDING_FETCH_COUNT, TRENDING_BROAD_FETCH_COUNT)
+        if lists.langs and endpoint not in ANIME_ENDPOINTS:
+            ids = await _in_languages(client, tmdb_key, endpoint, ids, details, lists.langs,
+                                      limit=limit * (2 if lists.home else 1))
         ids = await _without_hidden_genres(client, tmdb_key, endpoint, ids, details,
                                            limit=limit * (2 if lists.home else 1))
         if lists.home:

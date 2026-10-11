@@ -38,12 +38,14 @@ class _TempDb(unittest.TestCase):
         # Retry cooldowns are module state; one test's failure must not leave
         # the next test's list cooling down.  And no real retry pauses.
         tmdb._trending_source_failed_at.clear()
+        tmdb._trending_payloads.clear()
         self._no_retry_pause = mock.patch.object(tmdb, "_TRENDING_RETRY_DELAY_SECS", 0)
         self._no_retry_pause.start()
 
     def tearDown(self):
         self._no_retry_pause.stop()
         tmdb._trending_source_failed_at.clear()
+        tmdb._trending_payloads.clear()
         cache._cfg.TRENDING_FETCH_TIME, cache._cfg.TRENDING_FETCH_TIMEZONE = self._cfg_saved
         conn = getattr(cache._local, "conn", None)
         if conn is not None:

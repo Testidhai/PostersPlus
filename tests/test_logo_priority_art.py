@@ -47,6 +47,7 @@ class LogoPriorityArtTests(unittest.IsolatedAsyncioTestCase):
         self._retry_delay = tmdb._TRENDING_RETRY_DELAY_SECS
         tmdb._TRENDING_RETRY_DELAY_SECS = 0
         tmdb._trending_source_failed_at.clear()
+        tmdb._trending_payloads.clear()
         self.addCleanup(tmdb._trending_source_failed_at.clear)
         self.addCleanup(setattr, tmdb, "_TRENDING_RETRY_DELAY_SECS", self._retry_delay)
         tvdb_patch = mock.patch.object(main.tvdb, "tvdb_logo", mock.AsyncMock(return_value=None))

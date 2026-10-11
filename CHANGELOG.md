@@ -17,6 +17,21 @@
 
 ### Choose your trending lists
 
+- **Original Language** in Choose Lists keeps only titles first made in the
+  languages ticked on the Movies and Series lists: English, Global
+  (non-English), Japanese, Korean, Spanish, French, German or Hindi
+  (`trending_list=l:ko.ja`). Ranks are numbered without gaps after the cut,
+  the catalog's name says which languages, and anime lists are unaffected.
+- **Shudder** as a source for Movies and Series: **Shudder Popular** (what
+  streams on Shudder in the US, by TMDB popularity) and **New on Shudder**
+  (the same, released or airing in the last two years). No chart of
+  Shudder's viewing is public, so these are read from TMDB with the
+  server's key, and offered only when it has one.
+- Lists people have picked are now refreshed in the background while
+  they're in use (asked for in the last two days), so the first request
+  after a list expires no longer waits 1-2 seconds or more for it to be
+  rebuilt.
+
 - The Trending Catalogs Addon has a **Choose Lists** button. Tick any number
   of sources for Movies, Series, Anime and Anime Movies, and each becomes a
   catalog of its own: **TMDB** Today and This Week, **IMDb** Most Popular,
@@ -27,8 +42,8 @@
   needs a key. The addon numbers each catalog's posters by that catalog's
   own list, so every row it draws agrees. Posters drawn through your poster
   URL instead (AIOMetadata's poster pattern, Nuvio's override) can show only
-  one rank, so with two or more lists ticked for a type, **Poster URL** marks
-  the one they rank on.
+  one rank, so with two or more lists ticked for a type, a **Poster URL ranks
+  on** dropdown under it picks which of the ticked lists that is.
   Untick everything to drop a type's catalog. **Not out at home yet** leaves
   unreleased titles off every list.
 - The pick rides in the poster URL (`trending_list=m:imdb.tmdb,h:1`, the

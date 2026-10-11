@@ -50,6 +50,16 @@ ANILIST = "anilist"
 # lists on its own CDN, refreshed hourly.
 _SNOAK = "https://mdblist.com/lists/snoak/"
 _SIMKL = "https://data.simkl.in/discover/trending/{}/{}_500.json"
+# What streams on one service (a TMDB watch provider, US), by TMDB popularity:
+# "tmdb-provider:<id>", and ":new" for only what came out lately.  Read from
+# TMDB's discover with the server's key, for services no chart covers.
+PROVIDER_SCHEME = "tmdb-provider:"
+_SHUDDER = 99
+
+
+def _provider(sid: str, name: str, provider: int) -> tuple[tuple[str, str, str, str], ...]:
+    return ((sid, f"{name} Popular (US)", sid, f"{PROVIDER_SCHEME}{provider}"),
+            (f"{sid}_new", f"New on {name} (US)", sid, f"{PROVIDER_SCHEME}{provider}:new"))
 
 
 def _top10(kind: str) -> tuple[tuple[str, str, str, str], ...]:
@@ -77,6 +87,7 @@ _BUILTIN: dict[str, tuple[tuple[str, str, str, str], ...]] = {
         ("tv_stats", "Television Stats Today", "tvstats",
          _SNOAK + "todays-most-popular-movies-on-television-stats"),
         *_top10("movies"),
+        *_provider("shudder", "Shudder", _SHUDDER),
     ),
     "tv": (
         (TMDB, "TMDB Today", "tmdb", ""),
@@ -91,6 +102,7 @@ _BUILTIN: dict[str, tuple[tuple[str, str, str, str], ...]] = {
         ("tv_stats", "Television Stats Today", "tvstats",
          _SNOAK + "todays-most-popular-shows-on-television-stats"),
         *_top10("shows"),
+        *_provider("shudder", "Shudder", _SHUDDER),
     ),
     "anime": (
         (ANILIST, "AniList", "anilist", ""),
@@ -108,8 +120,24 @@ _BUILTIN: dict[str, tuple[tuple[str, str, str, str], ...]] = {
 FAMILIES = {
     "imdb": "IMDb", "trakt": "Trakt", "simkl": "SIMKL", "justwatch": "JustWatch",
     "rottentomatoes": "Rotten Tomatoes", "tvstats": "Television Stats",
-    "top10": "Streaming Top 10s (US)",
+    "top10": "Streaming Top 10s (US)", "shudder": "Shudder (US)",
 }
+# Original languages the movie and TV lists may be cut down to (l:), as
+# (code, name); "non-en" is every language but English.  None picked is all.
+LANGUAGES = (("en", "English"), ("non-en", "Global (non-English)"), ("ja", "Japanese"),
+             ("ko", "Korean"), ("es", "Spanish"), ("fr", "French"), ("de", "German"),
+             ("hi", "Hindi"))
+_LANG_CODES = tuple(code for code, _name in LANGUAGES)
+
+
+def language_matches(lang: "str | None", langs: "tuple[str, ...]") -> bool:
+    """Whether a title of original language *lang* is on a list cut down to
+    *langs* (all of them when empty)."""
+    if not langs:
+        return True
+    if lang is None:
+        return False
+    return lang in langs or ("non-en" in langs and lang != "en")
 # Catalogs one list type may be picked for.
 MAX_PICKS = 8
 _SERVER_LABEL = "This Instance's List"
@@ -181,7 +209,9 @@ def default_source(endpoint: str) -> str:
 
 def _builtin(endpoint: str) -> list[tuple[str, str, str, str]]:
     allowed = {f.strip().casefold() for f in str(config.TRENDING_LIST_SOURCES or "").split(",")}
-    return [b for b in _BUILTIN[endpoint] if b[2] in ("tmdb", "anilist") or b[2] in allowed]
+    return [b for b in _BUILTIN[endpoint] if (b[2] in ("tmdb", "anilist") or b[2] in allowed)
+            # A service's list is read with the server's TMDB key.
+            and (config.SERVER_TMDB_KEY or not b[3].startswith(PROVIDER_SCHEME))]
 
 
 def menu(endpoint: str) -> list[tuple[str, str]]:
@@ -223,13 +253,16 @@ class TrendingLists:
     """One choice of the four lists' sources, and of leaving off what isn't
     out at home (*home*).  The fields are the lists posters rank on; *shown*
     is, per list (ENDPOINTS' order), the sources picked as catalogs, None
-    while that is each list's ranking source alone."""
+    while that is each list's ranking source alone.  *langs* cuts the movie
+    and TV lists down to titles of those original languages (LANGUAGES),
+    none for all."""
     movie: str
     tv: str
     anime: str
     anime_movie: str
     home: bool
     shown: "tuple[tuple[str, ...], ...] | None" = None
+    langs: "tuple[str, ...]" = ()
 
     def source(self, endpoint: str) -> str:
         return getattr(self, endpoint_of(endpoint))
@@ -264,6 +297,8 @@ class TrendingLists:
         parts = (self.source(endpoint), "h1" if self.home else "h0")
         if endpoint not in ANIME_ENDPOINTS and anime_split():
             parts += (self.anime, self.anime_movie)
+        if endpoint not in ANIME_ENDPOINTS and self.langs:
+            parts += ("l-" + "+".join(self.langs),)
         return parts
 
     def key(self, endpoint: str) -> str:
@@ -286,6 +321,8 @@ class TrendingLists:
                 out.append(f"{_LETTER[e]}:{'.'.join(picks) or 'none'}")
         if self.home != base.home:
             out.append(f"h:{int(self.home)}")
+        if self.langs:
+            out.append(f"l:{'.'.join(self.langs)}")
         return ",".join(out)
 
     def rank_token(self) -> str:
@@ -317,12 +354,16 @@ def parse(raw: "str | None") -> TrendingLists:
 def _parse(raw: str, base: TrendingLists) -> TrendingLists:
     shown = {e: (base.source(e),) for e in ENDPOINTS}
     home = base.home
+    langs: tuple[str, ...] = ()
     for part in raw.split(","):
         letter, _, value = part.strip().partition(":")
         value = value.strip()
         if letter == "h":
             if value in ("0", "1"):
                 home = value == "1"
+            continue
+        if letter == "l":
+            langs = _languages(value.split("."))
             continue
         endpoint = _BY_LETTER.get(letter)
         if not endpoint:
@@ -342,7 +383,16 @@ def _parse(raw: str, base: TrendingLists) -> TrendingLists:
     ranking = {e: (shown[e][0] if shown[e] else base.source(e)) for e in ENDPOINTS}
     plain = all(shown[e] == (ranking[e],) for e in ENDPOINTS)
     return TrendingLists(*(ranking[e] for e in ENDPOINTS), home=home,
-                         shown=None if plain else tuple(shown[e] for e in ENDPOINTS))
+                         shown=None if plain else tuple(shown[e] for e in ENDPOINTS),
+                         langs=langs)
+
+
+def _languages(codes) -> "tuple[str, ...]":
+    """*codes* as the menu offers them, in its order; () for all, as English
+    with every other language is."""
+    picked = {c.strip() for c in codes}
+    langs = tuple(c for c in _LANG_CODES if c in picked)
+    return () if {"en", "non-en"} <= set(langs) else langs
 
 
 def from_key(key: str) -> "tuple[str, TrendingLists]":
@@ -353,6 +403,9 @@ def from_key(key: str) -> "tuple[str, TrendingLists]":
     if not rest:
         return endpoint, base
     parts = rest.split(".")
+    langs: tuple[str, ...] = ()
+    if parts[-1].startswith("l-"):
+        langs = _languages(parts.pop()[2:].split("+"))
     picked = {e: base.source(e) for e in ENDPOINTS}
     home = base.home
     if parts:
@@ -361,7 +414,7 @@ def from_key(key: str) -> "tuple[str, TrendingLists]":
         home = parts[1] == "h1"
     if len(parts) > 3:
         picked["anime"], picked["anime_movie"] = parts[2], parts[3]
-    return endpoint, TrendingLists(*(picked[e] for e in ENDPOINTS), home=home)
+    return endpoint, TrendingLists(*(picked[e] for e in ENDPOINTS), home=home, langs=langs)
 
 
 def caps() -> dict:
@@ -371,6 +424,7 @@ def caps() -> dict:
         "enabled": bool(config.TRENDING_LIST_CHOICE),
         "home_default": base.home,
         "max_picks": MAX_PICKS,
+        "languages": [{"id": c, "name": n} for c, n in LANGUAGES],
         "lists": {
             e: {"default": base.source(e),
                 "choices": [{"id": i, "name": n} for i, n in menu(e)]}

@@ -138,7 +138,7 @@ class SnapshotTests(_TempDb):
         self._store("movie", {"5": 1}, time.time() - 60)
         calls = []
 
-        async def _ids(client, key, endpoint, details_out=None, *, window="day", home=None):
+        async def _ids(client, key, endpoint, details_out=None, *, window="day", home=None, **_kw):
             calls.append((endpoint, window))
             return ["7", "5"]
 
@@ -156,7 +156,7 @@ class SnapshotTests(_TempDb):
     def test_a_chosen_source_is_read_from_its_own_url(self):
         seen = []
 
-        async def _source(client, media_type, details_out=None, url=None):
+        async def _source(client, media_type, details_out=None, url=None, **_kw):
             seen.append(url)
             return ["3"]
 
@@ -437,3 +437,178 @@ class SimklDetectTests(unittest.TestCase):
         rows = [{"title": "odd", "rank": 1}, {"title": "B", "rank": 900, "ids": {"tmdb": "22"}},
                 {"title": "A", "rank": 5, "ids": {"tmdb": "11"}}]
         self.assertEqual(tmdb._parse_trending_payload(rows, "movie"), ["22", "11"])
+
+
+class WarmPicksTests(_TempDb):
+    """The trending loop keeps the visitors' lists in use warm, so a catalog
+    request isn't the one kept waiting on a rebuild."""
+
+    def setUp(self):
+        super().setUp()
+        _Menu(self, TRENDING_LIST_SOURCES="imdb,trakt", TRENDING_CATALOGS_ENABLED=False)
+        tmdb._trending_request_noted_at.clear()
+        self.addCleanup(tmdb._trending_request_noted_at.clear)
+
+    def _pick(self, token, endpoint, cached_at):
+        lists = trending_lists.parse(token)
+        key = lists.key(endpoint)
+        self._store(key, {"5": 1}, cached_at, sig=tmdb.trending_source_signature(endpoint, lists))
+        return key, lists
+
+    def test_a_request_notes_the_pick_and_a_refresh_does_not(self):
+        asked, asked_lists = self._pick("m:imdb", "movie", time.time())
+        quiet, quiet_lists = self._pick("t:imdb", "tv", time.time())
+        asyncio.run(tmdb.ensure_trending_snapshot(None, "k", "movie", asked_lists))
+        asyncio.run(tmdb.ensure_trending_snapshot(None, "k", "tv", quiet_lists, note_request=False))
+        self.assertEqual(cache.requested_trending_lists(time.time() - 60), [asked])
+        # A rebuild keeps when it was last asked for.
+        cache.set_cached_trending_snapshot(asked, {"6": 1}, "x")
+        self.assertEqual(cache.requested_trending_lists(time.time() - 60), [asked])
+
+    def test_the_loop_refreshes_the_requested_picks_that_are_due(self):
+        old = time.time() - 3 * 86400
+        due, _ = self._pick("m:imdb", "movie", old)
+        anime, _ = self._pick("a:trakt", "anime", old)
+        current, _ = self._pick("t:imdb", "tv", time.time())
+        self._pick("t:trakt", "tv", old)  # never asked for
+        for key in (due, anime, current):
+            cache.note_trending_list_requested(key)
+        calls = []
+
+        async def _ensure(client, tmdb_key, endpoint, lists, *, note_request=True):
+            calls.append((lists.key(endpoint), note_request))
+            return {}, time.time() + 60
+
+        with mock.patch.object(main, "ensure_trending_snapshot", side_effect=_ensure), \
+             mock.patch.object(main, "_TRENDING_CHOICE_REFRESH_GAP", 0):
+            asyncio.run(main._refresh_requested_trending_lists(None))
+        # The anime list first; the current one and the unrequested one left.
+        self.assertEqual(calls, [(anime, False), (due, False)])
+
+    def test_the_loop_wakes_for_a_warm_pick(self):
+        key, _ = self._pick("m:imdb", "movie", time.time() - 3 * 86400)
+        cache.note_trending_list_requested(key)
+        with mock.patch.object(main._cfg, "SERVER_TMDB_KEY", ""):
+            # Past due: retried within the hour rather than a day from now.
+            self.assertLessEqual(main._seconds_until_trending_due(), 3601)
+
+    def test_one_source_is_read_once_for_several_lists(self):
+        calls = []
+
+        class _Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"results": [{"id": 9}]}
+
+        async def _get(url, timeout, follow_redirects):
+            calls.append(url)
+            return _Resp()
+
+        client = mock.Mock(get=_get)
+        url = trending_lists.source_url("movie", "imdb")
+        for _ in range(2):
+            ids = asyncio.run(tmdb.fetch_trending_source_ids(client, "movie", {}, url=url))
+            self.assertEqual(ids, ["9"])
+        self.assertEqual(len(calls), 1)
+
+
+class LanguageFilterTests(_TempDb):
+    """Original Language (l:) cuts the movie and TV lists down to titles
+    first made in the languages picked, as toptoday's filter does."""
+
+    def setUp(self):
+        super().setUp()
+        _Menu(self, TRENDING_LIST_SOURCES="imdb")
+
+    def test_the_pick_is_read_in_the_menus_order(self):
+        lists = trending_lists.parse("l:ko.en.bogus")
+        self.assertEqual(lists.langs, ("en", "ko"))
+        self.assertEqual(lists.token(), "l:en.ko")
+        # English with every other language is all of them.
+        self.assertEqual(trending_lists.parse("l:non-en.en").langs, ())
+        self.assertEqual(trending_lists.parse("m:imdb,l:ja").rank_token(), "m:imdb,l:ja")
+
+    def test_only_the_movie_and_tv_lists_are_cut(self):
+        lists = trending_lists.parse("m:imdb,l:en.ko")
+        self.assertEqual(lists.key("movie"), "movie@imdb.h0.anilist.anilist.l-en+ko")
+        self.assertEqual(lists.key("tv"), "tv@tmdb.h0.anilist.anilist.l-en+ko")
+        self.assertEqual(lists.key("anime"), "anime")
+        for e in ("movie", "tv"):
+            endpoint, back = trending_lists.from_key(lists.key(e))
+            self.assertEqual((endpoint, back.key(e), back.langs), (e, lists.key(e), ("en", "ko")))
+        with mock.patch.object(config, "TRENDING_CATALOGS_ENABLED", False):
+            key = lists.key("movie")
+            self.assertEqual(key, "movie@imdb.h0.l-en+ko")
+            self.assertEqual(trending_lists.from_key(key)[1].key("movie"), key)
+
+    def test_language_matches(self):
+        match = trending_lists.language_matches
+        self.assertTrue(match("ko", ()))
+        self.assertTrue(match("ko", ("non-en",)))
+        self.assertFalse(match("en", ("non-en",)))
+        self.assertTrue(match("en", ("en", "ja")))
+        self.assertFalse(match(None, ("en",)))
+
+    def test_rows_without_a_language_are_looked_up(self):
+        details = {"1": {"lang": "en"}, "2": {"lang": "ko"}, "3": {}, "4": {}}
+
+        async def _meta(client, tmdb_id, key, kind, *a, **k):
+            return ([27], False, [], None, "", None, None,
+                    {"original_language": {"3": "ko", "4": "fr"}[tmdb_id]})
+
+        with mock.patch.object(tmdb, "fetch_poster_metadata", side_effect=_meta):
+            kept = asyncio.run(tmdb._in_languages(None, "k", "movie", ["1", "2", "3", "4"],
+                                                  details, ("ko",)))
+        self.assertEqual(kept, ["2", "3"])
+        self.assertEqual((details["3"]["lang"], details["3"]["genres"]), ("ko", [27]))
+
+    def test_the_catalog_name_says_which_languages(self):
+        names = [n for _c, _t, e, _s, n in main._trending_catalog_specs(trending_lists.parse("l:ko"))]
+        self.assertIn("Trending Movies · Korean", names[0])
+        self.assertFalse(any("Korean" in n for n in names[2:]))  # the anime catalogs
+
+
+class ShudderSourceTests(_TempDb):
+    def setUp(self):
+        super().setUp()
+        _Menu(self, TRENDING_LIST_SOURCES="shudder")
+
+    def test_offered_only_with_the_servers_tmdb_key(self):
+        with mock.patch.object(config, "SERVER_TMDB_KEY", "k"):
+            self.assertIn("shudder_new", trending_lists.pickable("tv"))
+            self.assertEqual(trending_lists.source_url("movie", "shudder"), "tmdb-provider:99")
+            self.assertNotIn("shudder", trending_lists.pickable("anime"))
+        with mock.patch.object(config, "SERVER_TMDB_KEY", ""):
+            self.assertNotIn("shudder", trending_lists.pickable("movie"))
+
+    def test_read_from_tmdbs_discover(self):
+        calls = []
+
+        class _Resp:
+            def __init__(self, page):
+                self.page = page
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                rows = {1: [{"id": 5, "title": "A", "original_language": "en"}, {"id": 6, "name": "B"}],
+                        2: [{"id": 6}, {"id": 7}]}[self.page]
+                return {"total_pages": 2, "results": rows}
+
+        async def _get(url, params):
+            calls.append((url, params))
+            return _Resp(params["page"])
+
+        details = {}
+        ids = asyncio.run(tmdb.fetch_trending_source_ids(
+            mock.Mock(get=_get), "tv", details, url="tmdb-provider:99:new", tmdb_key="k"))
+        self.assertEqual(ids, ["5", "6", "7"])
+        self.assertEqual(details["5"]["lang"], "en")
+        url, params = calls[0]
+        self.assertTrue(url.endswith("/discover/tv"))
+        self.assertEqual((params["with_watch_providers"], params["watch_region"]), ("99", "US"))
+        # A series is new while it airs, whenever it began.
+        self.assertIn("air_date.gte", params)

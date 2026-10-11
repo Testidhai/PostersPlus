@@ -504,6 +504,9 @@ def init_db() -> None:
     # Name, year and art for each ranked title, for the trending catalogs
     # addon, which serves the snapshot as a Stremio catalog.
     _add_column_if_missing(conn, "trending_cache", "details_json", "TEXT")
+    # When a visitor's list was last asked for, so the trending loop keeps
+    # the ones in use warm (requested_trending_lists).
+    _add_column_if_missing(conn, "trending_cache", "requested_at", "INTEGER")
 
     _clear_mdblist_wrong_type_misses(conn)
 
@@ -1604,6 +1607,32 @@ def trending_list_keys() -> list[str]:
         return []
 
 
+def note_trending_list_requested(media_type: str) -> None:
+    """Record that a visitor's list was just asked for (see
+    requested_trending_lists)."""
+    try:
+        with _db_lock:
+            get_db().execute(
+                "UPDATE trending_cache SET requested_at = ? WHERE media_type = ?",
+                (int(time.time()), media_type),
+            )
+            get_db().commit()
+    except Exception as exc:
+        logger.error(f"Trending list request note error: {exc}")
+
+
+def requested_trending_lists(since: float) -> list[str]:
+    """The visitor-chosen lists ("<endpoint>@...") asked for since *since*."""
+    try:
+        return [k for (k,) in get_db().execute(
+            "SELECT media_type FROM trending_cache WHERE media_type LIKE '%@%' AND requested_at >= ?",
+            (int(since),),
+        )]
+    except Exception as exc:
+        logger.error(f"Requested trending lists read error: {exc}")
+        return []
+
+
 def prune_trending_choices(max_age_secs: int) -> int:
     """Delete the visitor-chosen lists ("<endpoint>@...") not rebuilt for
     *max_age_secs*: nobody has asked for them since.  One asked for again is
@@ -1641,8 +1670,9 @@ def set_cached_trending_snapshot(
             get_db().execute(
                 """
                 INSERT OR REPLACE INTO trending_cache
-                (media_type, rankings_json, cached_at, source_sig, details_json)
-                VALUES (?, ?, ?, ?, ?)
+                (media_type, rankings_json, cached_at, source_sig, details_json, requested_at)
+                VALUES (?, ?, ?, ?, ?,
+                        (SELECT requested_at FROM trending_cache WHERE media_type = ?))
                 """,
                 (
                     media_type,
@@ -1653,6 +1683,7 @@ def set_cached_trending_snapshot(
                     # from thousands of rows.
                     json.dumps({k: v for k, v in details.items() if k in rankings})
                     if details else None,
+                    media_type,
                 ),
             )
             get_db().commit()
