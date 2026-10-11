@@ -102,6 +102,17 @@ class LandscapeProviderAndPickTests(unittest.TestCase):
             self._cfg(shape="landscape", landscape_poster_pick="random")))
 
 
+class LandscapeRandomBackdropTests(unittest.TestCase):
+    def test_picks_within_the_pool_of_the_kind_picked(self):
+        data = {"poster_pools": {"backdrops": ["/n1", "/n2", "/n3"], "text_backdrops": ["/t1", "/t2"]}}
+        neutral = {main._random_backdrop(data, "/n1", "/n1") for _ in range(60)}
+        self.assertEqual(neutral, {"/n1", "/n2", "/n3"})
+        text = {main._random_backdrop(data, "/t1", "/n1") for _ in range(60)}
+        self.assertEqual(text, {"/t1", "/t2"})
+        # A row cached before the pools keeps its pick.
+        self.assertEqual(main._random_backdrop({}, "/n1", "/n1"), "/n1")
+
+
 class FanartPoolTests(unittest.TestCase):
     def setUp(self):
         self.store = {}

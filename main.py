@@ -2819,6 +2819,16 @@ _SIGNATURE_OMIT_AT_DEFAULT = {"poster_width": 500, "rating_badges": "", "rating_
                                  for name in _LANDSCAPE_BADGE_TUNING}}
 
 
+def _random_backdrop(tmdb_data: dict, picked: str, neutral: "str | None") -> str:
+    """One of TMDB's top five backdrops of the kind *picked* is (language-
+    neutral when it is the neutral pick, text-bearing otherwise), for
+    landscape_poster_pick=random.  Rows cached before the pools keep *picked*
+    until their weekly refresh."""
+    pool = (tmdb_data.get("poster_pools") or {}).get(
+        "backdrops" if picked == neutral else "text_backdrops") or []
+    return random.choice(pool) if len(pool) > 1 else picked
+
+
 def _scale_render_cfg(cfg: "RequestConfig") -> "RequestConfig":
     """The config a render draws with, its fixed-pixel settings scaled from the
     500-wide canvas they are specified against to the one being drawn.
@@ -5353,8 +5363,10 @@ def _build_poster(
                         sep = None
                         # A score leading the line has nothing before it to be
                         # its ★, so it carries one of its own.
-                        if (k == "rating" and len(keys) > 1 and isinstance(seg, str)
-                                and cfg.minimalist_rating_separator in ("star", "bullet_star")):
+                        # Bullet + Star labels it even alone, as on landscape.
+                        if (k == "rating" and isinstance(seg, str) and (
+                                cfg.minimalist_rating_separator == "bullet_star"
+                                or (len(keys) > 1 and cfg.minimalist_rating_separator == "star"))):
                             seg = f"★ {seg}"
                     elif k == "rating":
                         sep = _score_sep
@@ -11258,14 +11270,8 @@ async def get_poster(
             _use_backdrop = False
             _ls_random = rcfg.landscape_poster_pick == "random"
             if _ls_random and _ls_path is not None:
-                # One of TMDB's top five of the kind picked, neutral or
-                # text-bearing.  Rows cached before the pools keep the top
-                # one until their weekly refresh.
-                _bd_pool = (tmdb_data.get("poster_pools") or {}).get(
-                    "backdrops" if _ls_path == backdrop_path else "text_backdrops") or []
-                if len(_bd_pool) > 1:
-                    _ls_path = random.choice(_bd_pool)
-                    logger.info(f"Random landscape backdrop for {tmdb_id}: {_ls_path}")
+                _ls_path = _random_backdrop(tmdb_data, _ls_path, backdrop_path)
+                logger.info(f"Random landscape backdrop for {tmdb_id}: {_ls_path}")
             _ls_source = _source_for(rcfg, "landscape_art_source", type, _is_anime_title)
             # TVDB's background instead, when asked for and it has one: the
             # untagged ones are clean art, the tagged ones carry the title.
@@ -11303,6 +11309,7 @@ async def get_poster(
             # A later season's own art (anime_season.py): every source above
             # gives each season the show's art, as they go by its TMDB id.
             # The operator's pick below still wins.
+            _season_bg = None
             if (_cfg.ANIME_SEASON_ART and is_anime and type != "movie"
                     and has_tmdb_id and not use_cinemeta):
                 _season_place = anime_ids.season_place(anime_namespace, anime_id)
@@ -11318,10 +11325,11 @@ async def get_poster(
                         is_textless = True
                         logger.info(f"Season landscape art for {anime_key}: {_season_bg}")
             # The entry's own Kitsu cover in place of the TMDB backdrop
-            # (landscape_anime_provider_art), when it cuts to 16:9 clean; a
-            # later season's is the one season art above already chose.
+            # (landscape_anime_provider_art), when it cuts to 16:9 clean.  Not
+            # again for a later season season art has already given its own.
             if (rcfg.landscape_anime_provider_art == "kitsu" and anime_namespace in anime.NAMESPACES
-                    and anime_id is not None and has_tmdb_id and not use_cinemeta):
+                    and anime_id is not None and has_tmdb_id and not use_cinemeta
+                    and not _season_bg):
                 _kitsu_bg = await anime_season.kitsu_cover(
                     client, namespace=anime_namespace, anime_id=anime_id, tmdb_id=tmdb_id)
                 if _kitsu_bg:
