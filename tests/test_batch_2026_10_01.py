@@ -148,6 +148,52 @@ class FrostedQualityTests(unittest.TestCase):
         self.assertEqual(gb.quality_look("frosted", (1.2, 2.6, 3)), "rgb:1,3,3")
 
 
+class FrostedCertAndLogoTests(unittest.TestCase):
+    def test_styles_parse_and_default_to_solid(self):
+        cfg = main.build_request_config({})
+        self.assertEqual((cfg.badge_cert_style, cfg.badge_logo_style), ("solid", "solid"))
+        cfg = main.build_request_config({"badge_cert_style": "frosted", "badge_logo_style": "Frosted"})
+        self.assertEqual((cfg.badge_cert_style, cfg.badge_logo_style), ("frosted", "frosted"))
+        self.assertEqual(main.build_request_config({"badge_cert_style": "x"}).badge_cert_style, "solid")
+
+    def test_certificate_and_age_go_on_chips(self):
+        chip = dict(gb.row_items([], "R", None, 30, ("cert",), True, cert_look="auto"))["cert"]
+        self.assertEqual(chip.info["frost_chip"][0], "auto")
+        self.assertEqual(chip.height, 30)
+        age = dict(gb.row_items([], None, 14, 30, ("cert",), True, cert_look="auto"))["cert"]
+        self.assertIn("frost_chip", age.info)
+        self.assertEqual(gb.row_items([], None, None, 30, ("cert",), True, cert_look="auto"), [])
+
+    def test_logo_goes_on_a_chip_that_grows_with_its_scale(self):
+        import os, tempfile
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(gb, "LOGO_DIR", d):
+            gb._logo_mark.cache_clear()
+            net = gb.Logo("network", 213, "/n.png")
+            logo = Image.new("RGBA", (140, 60), (0, 0, 0, 0))
+            logo.paste((255, 255, 255, 255), (10, 10, 130, 50))
+            logo.save(os.path.join(d, "network_213_n.png"))
+            chip = gb.row_items([], None, None, 30, ("network",), True, network=net,
+                                logo_look="rgb:1,2,3")[0][1]
+            big = gb.row_items([], None, None, 30, ("network",), True, network=net,
+                               logo_look="rgb:1,2,3", logo_scale=2.0)[0][1]
+            gb._logo_mark.cache_clear()
+        self.assertEqual(chip.info["frost_chip"][0], "rgb:1,2,3")
+        self.assertEqual(chip.height, 30)
+        self.assertGreater(big.height, 30)
+        img = Image.new("RGBA", (300, 100), (40, 90, 160, 255))
+        gb.draw_row(img, [("network", chip)], left_x=10, center_y=50, gap=4)
+        self.assertNotEqual(img.getpixel((12, 50)), (40, 90, 160, 255))
+
+    def test_frost_is_sampled_only_for_a_frosted_slot_in_a_group(self):
+        cfg = main.build_request_config({"badge_display_mode": "7", "badge_cert_style": "frosted",
+                                         "badge_group1": "tl:2:res,network"})
+        self.assertFalse(gb.chips_want_frost(cfg, True))
+        cfg.badge_group1 = "tl:2:res,cert"
+        self.assertTrue(gb.chips_want_frost(cfg, False))
+        looks = gb.chip_looks(cfg, (10, 20, 30), 0.5)
+        self.assertEqual(looks, {"quality_look": None, "cert_look": "rgb:10,20,30@128", "logo_look": None})
+
+
 class GreyscaleTests(unittest.TestCase):
     def _meta(self, status):
         m = DiscoveryMeta()

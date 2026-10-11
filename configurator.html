@@ -4136,12 +4136,19 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                   <option value="US" selected>United States</option>
                 </select>
               </div>
-              <div class="field" id="gb-logo-scale-field" style="display:none">
-                <label class="field-label" data-tip="Network and studio logos are sized to carry about the same weight whatever their shape: a long wordmark is drawn shorter, a compact emblem taller (up to a little over the row), and a solid logo smaller than a thin one. This multiplies that size, on both shapes; 1.00 is the standard size.">Network / Studio Logo Size</label>
-                <div class="range-row">
-                  <input type="range" id="cfg-badge-logo-scale" min="0.50" max="2.00" step="0.05" value="1.00" oninput="updateRange(this,'rng-gbls'); build(); queuePreviewReload()">
-                  <span class="range-val" id="rng-gbls">1.00</span>
-                </div>
+              <div class="field" id="gb-cert-style-field" style="display:none">
+                <label class="field-label" data-tip="How the Certificate badge is drawn. Solid: an outlined box. Frosted: a chip of the frosted notch's glass, like the frosted quality badges, with the rating in the tint's ink.">Age Rating Style</label>
+                <select id="cfg-badge-cert-style" onchange="updateLandscapeBadgeFields(); build(); queuePreviewReload()">
+                  <option value="solid" selected>Solid</option>
+                  <option value="frosted">Frosted</option>
+                </select>
+              </div>
+              <div class="field" id="gb-logo-style-field" style="display:none">
+                <label class="field-label" data-tip="How the network and studio logos are drawn. Solid: the bare white logo. Frosted: each on a chip of the frosted notch's glass, like the frosted quality badges, the logo sized to sit inside it and drawn in the tint's ink. Network / Studio Logo Size (under Layout) above 1.00 grows the chip with the logo.">Network / Studio Logo Style</label>
+                <select id="cfg-badge-logo-style" onchange="updateLandscapeBadgeFields(); build(); queuePreviewReload()">
+                  <option value="solid" selected>Solid</option>
+                  <option value="frosted">Frosted</option>
+                </select>
               </div>
               <div class="field" id="gb-legacy-style-field" style="display:none">
                 <label class="field-label" data-tip="The badge the Legacy slot draws: the quality badges from before Graphic Badges, now placed by the groups. Quality Notch: a small pill in the quality tier's medal colour. Quality Bookmark: a fold in the same colour hanging from its group's corner (Beside Chip and the logo anchors take the top corner the notch or sash leaves free); the rest of the group lays out beside it. Quality Badge Row: the resolution, source and HDR marks as one row. Combined Badge: resolution · visual tag, the pip coloured by source. Quality Age Rating: the age rating in the tier's colour. Age Rating Only: the age rating in silver, with no quality lookup.">Legacy Badge</label>
@@ -4235,6 +4242,13 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                     <input type="range" id="gb-gap-4" min="0" max="0.08" step="0.002" value="0.028" oninput="updateRange(this,'rng-gbgap4'); gbFromControls()">
                     <span class="range-val" id="rng-gbgap4">0.028</span>
                   </div>
+                </div>
+              </div>
+              <div class="field" id="gb-logo-scale-field" style="display:none">
+                <label class="field-label" data-tip="Network and studio logos are sized to carry about the same weight whatever their shape: a long wordmark is drawn shorter, a compact emblem taller (up to a little over the row), and a solid logo smaller than a thin one. This multiplies that size, on both shapes; 1.00 is the standard size.">Network / Studio Logo Size</label>
+                <div class="range-row">
+                  <input type="range" id="cfg-badge-logo-scale" min="0.50" max="2.00" step="0.05" value="1.00" oninput="updateRange(this,'rng-gbls'); build(); queuePreviewReload()">
+                  <span class="range-val" id="rng-gbls">1.00</span>
                 </div>
               </div>
             </div>
@@ -5406,7 +5420,10 @@ function gbRender() {
     st.assign.legacy && vEl('cfg-badge-legacy-style') === 'combined' ? '' : 'none';
   document.getElementById('gb-quality-style-field').style.display =
     (st.assign.video || st.assign.audio || st.assign.res) ? '' : 'none';
+  document.getElementById('gb-cert-style-field').style.display = st.assign.cert ? '' : 'none';
   document.getElementById('gb-logo-scale-field').style.display =
+    (st.assign.network || st.assign.studio) ? '' : 'none';
+  document.getElementById('gb-logo-style-field').style.display =
     (st.assign.network || st.assign.studio) ? '' : 'none';
   list.innerHTML = '';
   st.order.forEach((id, idx) => {
@@ -7590,6 +7607,7 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
   const _certShown = (emitAll && badgeMode === 7 && pGroups.some(g => gbHasSlot(g, 'cert')))
     || (emitLandscape && lBadgeMode === 7 && lGroups.some(g => gbHasSlot(g, 'cert')));
   if (_certShown && vEl('cfg-badge-cert-country') !== 'US') params.set('badge_cert_country', vEl('cfg-badge-cert-country'));
+  if (_certShown && vEl('cfg-badge-cert-style') === 'frosted') params.set('badge_cert_style', 'frosted');
   // Likewise the quality badges' look, wherever graphic badges show quality.
   const _gbQualityShown = (emitAll && badgeMode === 7 && badgeUsesQuality(7, pGroups))
     || (emitLandscape && lBadgeMode === 7 && badgeUsesQuality(7, lGroups));
@@ -7605,6 +7623,7 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
     || (emitLandscape && lBadgeMode === 7 && lGroups.some(g => gbHasSlot(g, 'network') || gbHasSlot(g, 'studio')));
   const _gbls = n('cfg-badge-logo-scale');
   if (_gbLogoShown && Math.abs(_gbls - 1) > 1e-6) params.set('badge_logo_scale', _gbls.toFixed(2));
+  if (_gbLogoShown && vEl('cfg-badge-logo-style') === 'frosted') params.set('badge_logo_style', 'frosted');
   if (_qualityShown && c('tog-wait-quality')) {
     params.set('wait_for_quality', 'true');
     if (c('tog-greyscale-noquality')) params.set('greyscale_no_quality', 'true');
@@ -8652,10 +8671,12 @@ function updateLandscapeBadgeFields() {
   const glass = (vEl('cfg-landscape-badge-style') || 'glass') === 'glass';
   document.getElementById('landscape-badge-text-color-field').style.display = glass ? 'none' : '';
   // The glass's two sliders, or the dark body's opacity: as on the portrait
-  // notch.  Frosted graphic badges (quality chips, cinema disc) take the glass
-  // sliders too (landscape._build_landscape), whatever the badge's own style.
+  // notch.  Frosted graphic badges (quality, age rating and logo chips,
+  // cinema disc) take the glass sliders too (landscape._build_landscape),
+  // whatever the badge's own style.
   const frostedExtras = c('tog-landscape') && vEl('cfg-badge-display-mode') === '7'
-    && [vEl('cfg-badge-quality-style'), vEl('cfg-badge-cinema-style')].includes('frosted');
+    && [vEl('cfg-badge-quality-style'), vEl('cfg-badge-cinema-style'),
+        vEl('cfg-badge-cert-style'), vEl('cfg-badge-logo-style')].includes('frosted');
   document.getElementById('landscape-badge-glass-opacity-field').style.display = glass || frostedExtras ? '' : 'none';
   document.getElementById('landscape-badge-saturation-field').style.display    = glass || frostedExtras ? '' : 'none';
   document.getElementById('landscape-badge-opacity-field').style.display       = glass ? 'none' : '';
@@ -10626,6 +10647,8 @@ function importUrl(urlStr, { silent = false, settingsOnly = false, preserveClien
     _setEl('cfg-badge-cert-country', document.querySelector(`#cfg-badge-cert-country option[value="${_cc}"]`) ? _cc : 'US'); }
   _setEl('cfg-badge-quality-style', p.get('badge_quality_style') === 'frosted' ? 'frosted' : 'solid');
   _setEl('cfg-badge-logo-scale', p.get('badge_logo_scale') || '1.00');
+  _setEl('cfg-badge-cert-style', p.get('badge_cert_style') === 'frosted' ? 'frosted' : 'solid');
+  _setEl('cfg-badge-logo-style', p.get('badge_logo_style') === 'frosted' ? 'frosted' : 'solid');
   _setEl('cfg-badge-legacy-style', LEGACY_HEIGHTS[p.get('badge_legacy_style')] ? p.get('badge_legacy_style') : 'notch');
   gbRender();
   updateBadgeModeHint();

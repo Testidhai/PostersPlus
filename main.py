@@ -2011,6 +2011,10 @@ class RequestConfig:
     # The quality marks' look — graphic_badges.QUALITY_STYLES: "solid" (the
     # filled boxes and bare Dolby marks) or "frosted" (each on a glass chip).
     badge_quality_style:      str  = graphic_badges.DEFAULT_QUALITY_STYLE
+    # The same choice for the certificate and for the network and studio
+    # logos — graphic_badges.CHIP_STYLES.  One setting each for both shapes.
+    badge_cert_style:         str  = graphic_badges.DEFAULT_CHIP_STYLE
+    badge_logo_style:         str  = graphic_badges.DEFAULT_CHIP_STYLE
     # A multiplier on the network and studio logos' size, which is otherwise
     # set by the group's row height and each logo's shape and ink — see
     # graphic_badges.logo_size.  One setting for both shapes.
@@ -2812,6 +2816,8 @@ _SIGNATURE_OMIT_AT_DEFAULT = {"poster_width": 500, "rating_badges": "", "rating_
                               "landscape_logo_scale": 1.0, "landscape_rating_badges": False,
                               "landscape_info_center": False,
                               "badge_quality_style": graphic_badges.DEFAULT_QUALITY_STYLE,
+                              "badge_cert_style": graphic_badges.DEFAULT_CHIP_STYLE,
+                              "badge_logo_style": graphic_badges.DEFAULT_CHIP_STYLE,
                               "badge_logo_scale": graphic_badges.LOGO_SCALE_DEFAULT,
                               "badge_legacy_style": graphic_badges.DEFAULT_LEGACY_STYLE,
                               "badge_cert_country": certifications.DEFAULT_COUNTRY,
@@ -3234,6 +3240,10 @@ def build_request_config(params: dict) -> RequestConfig:
     _quality_style = graphic_badges.quality_style(params.get("badge_quality_style"))
     if _quality_style:
         cfg.badge_quality_style = _quality_style
+    for _name in ("badge_cert_style", "badge_logo_style"):
+        _chip_style = graphic_badges.chip_style(params.get(_name))
+        if _chip_style:
+            setattr(cfg, _name, _chip_style)
     cfg.badge_logo_scale = _f("badge_logo_scale", cfg.badge_logo_scale, *graphic_badges.LOGO_SCALE_RANGE)
     _legacy_style = graphic_badges.legacy_style(params.get("badge_legacy_style"))
     if _legacy_style:
@@ -5103,9 +5113,8 @@ def _build_poster(
         dominant_frost_rgb(_frost_color_src)
         if (_bar_frosted or _notch_frosted or _sash_poster or _ribbon_frosted
             or (cinema_run is not None and graphic_badges.wants_frost(cfg.badge_cinema_style))
-            or (cfg.badge_display_mode == 7 and graphic_badges.wants_frost(cfg.badge_quality_style)
-                and quality_tokens and graphic_badges.groups_use_quality(cfg)
-                and _score_points(quality_tokens) >= cfg.badge_min_score)) else None
+            or (cfg.badge_display_mode == 7 and graphic_badges.chips_want_frost(
+                cfg, bool(quality_tokens) and _score_points(quality_tokens) >= cfg.badge_min_score))) else None
     )
     # A tinted vignette and a frosted notch sample the same artwork but answer
     # different questions — the vignette asks what the band's own stretch of art is
@@ -5684,14 +5693,14 @@ def _build_poster(
                 _frosted_tint(*_frost_tint, saturation=_frost_sat, reference=_frost_ref),
                 cfg.sash_badge_frost_opacity), *badge_logos[3:])
         # Frosted chips take the frosted notch's opacity, so the two read as one glass.
-        _qlook = graphic_badges.quality_look(
-            cfg.badge_quality_style,
+        _looks = graphic_badges.chip_looks(
+            cfg,
             _frosted_tint(*_frost_tint, saturation=_frost_sat, reference=_frost_ref)
             if _frost_tint is not None else None,
             cfg.sash_badge_frost_opacity)
         _draw_graphic_badges(image, cfg, quality_tokens or [], certification, age_rating,
                              _before_overlays, spread_beside_chip=_auto_notch, logo_box=_logo_box,
-                             logos=badge_logos, quality_look=_qlook)
+                             logos=badge_logos, looks=_looks)
 
     return image
 
@@ -5935,10 +5944,10 @@ def _draw_graphic_badges(image: Image.Image, cfg: "RequestConfig", tokens: list[
                          certification: str | None, age_rating: int | None,
                          before: np.ndarray, spread_beside_chip: str | None = None,
                          logo_box: tuple[int, int, int, int] | None = None,
-                         logos: tuple = (None, None), quality_look: str | None = None) -> None:
+                         logos: tuple = (None, None), looks: dict | None = None) -> None:
     """Each graphic badge group as a row at its anchor, in the space the other
-    overlays left.  ``quality_look`` (graphic_badges.quality_look) frosts the
-    quality marks.
+    overlays left.  ``looks`` (graphic_badges.chip_looks) frosts the quality
+    marks, certificate and logos.
 
     ``spread_beside_chip`` (an auto notch that became a side chip) lays a
     "chip" group out from the chip instead: "spread" fills the space beside
@@ -5957,6 +5966,7 @@ def _draw_graphic_badges(image: Image.Image, cfg: "RequestConfig", tokens: list[
     # group's badges tight doesn't also push it up against its neighbours.
     clear = pxi(width * 0.028)
     show_quality = bool(tokens) and _score_points(tokens) >= cfg.badge_min_score
+    looks = looks or {}
 
     # An edge notch leaves the top to the groups: they take the side chip's
     # line where it would be, unmoved.
@@ -5981,8 +5991,7 @@ def _draw_graphic_badges(image: Image.Image, cfg: "RequestConfig", tokens: list[
         def build(logo_scale: float, _g=group, _unit=g_unit) -> list:
             return graphic_badges.row_items(tokens, certification, age_rating, _unit,
                                             _g.slots, show_quality, *logos,
-                                            quality_look=quality_look,
-                                            logo_scale=logo_scale)[:_g.max_items]
+                                            logo_scale=logo_scale, **looks)[:_g.max_items]
         items = build(cfg.badge_logo_scale)
         if not items:
             continue
@@ -6010,8 +6019,7 @@ def _draw_graphic_badges(image: Image.Image, cfg: "RequestConfig", tokens: list[
                     image,
                     lambda unit, _g=group: graphic_badges.row_items(
                         tokens, certification, age_rating, unit, _g.slots, show_quality,
-                        *logos, quality_look=quality_look,
-                        logo_scale=cfg.badge_logo_scale)[:_g.max_items],
+                        *logos, logo_scale=cfg.badge_logo_scale, **looks)[:_g.max_items],
                     band_cols(top_line), right, top_line, margin, g_gap,
                     unit=g_unit, max_unit=band_h)):
             continue

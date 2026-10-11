@@ -12,6 +12,17 @@
   extra API calls. A title with no rating for that country shows MDBList's
   age (`14+`) as before, or nothing.
 
+### Frosted age rating and logos
+
+- The graphic badges' **Certificate** and **Network / Studio** logos can be
+  frosted, like the quality badges: **Age Rating Style** and **Network /
+  Studio Logo Style** under Graphic Badges (`badge_cert_style=frosted`,
+  `badge_logo_style=frosted`) put each on a chip of the frosted notch's
+  glass, on both shapes. A logo is sized to sit inside its chip; a **Logo
+  Size** above 1.00 grows the chip with it.
+- **Network / Studio Logo Size** moved to **Layout**, beside the groups'
+  size and spacing sliders.
+
 ### Fixes
 
 - Rating badges can be limited to **Anime Movie** and **Anime TV** separately:

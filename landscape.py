@@ -1170,7 +1170,7 @@ def _draw_rank(image: Image.Image, cfg, rank: int, args: dict,
 def _draw_graphic_badges(image: Image.Image, before: np.ndarray, cfg, tokens: list[str],
                          certification: str | None, age_rating: int | None,
                          logos: tuple, logo_box: tuple[int, int, int, int] | None,
-                         badge_position: str | None, quality_look: str | None = None) -> None:
+                         badge_position: str | None, looks: dict | None = None) -> None:
     """The graphic badge groups, laid out the portrait way (main._draw_graphic_badges)
     against the landscape furniture: top rows share the glass pill's centre
     line, "chip" takes the top corner the pill leaves free, and every row moves
@@ -1201,8 +1201,7 @@ def _draw_graphic_badges(image: Image.Image, before: np.ndarray, cfg, tokens: li
         def build(logo_scale: float, _g=group, _unit=unit) -> list:
             return graphic_badges.row_items(tokens, certification, age_rating, _unit,
                                             _g.slots, show_quality, *logos,
-                                            quality_look=quality_look,
-                                            logo_scale=logo_scale)[:_g.max_items]
+                                            logo_scale=logo_scale, **(looks or {}))[:_g.max_items]
         items = build(cfg.badge_logo_scale)
         if not items:
             continue
@@ -1521,9 +1520,8 @@ def _build_landscape(
         frost_opacity = getattr(cfg, "landscape_badge_glass_opacity", _LIFT_OPACITY)
         frost_saturation = 1.2 * getattr(cfg, "landscape_badge_saturation", 1.0)
         if ((cinema_run is not None and graphic_badges.wants_frost(cfg.badge_cinema_style))
-                or (graphic_badges.wants_frost(cfg.badge_quality_style) and quality_tokens
-                    and graphic_badges.groups_use_quality(cfg)
-                    and _score_points(quality_tokens) >= cfg.badge_min_score)):
+                or graphic_badges.chips_want_frost(
+                    cfg, bool(quality_tokens) and _score_points(quality_tokens) >= cfg.badge_min_score)):
             from awards import dominant_frost_rgb, _frosted_tint
             tint = _frosted_tint(*(badge_source or dominant_frost_rgb(art)),
                                  saturation=frost_saturation, reference=cfg.frost_reference)
@@ -1533,6 +1531,6 @@ def _build_landscape(
                        _legacy_badge(cfg, quality_tokens or [], age_rating))
         _draw_graphic_badges(image, before, cfg, quality_tokens or [], certification, age_rating,
                              badge_logos, logo_box, badge_position,
-                             graphic_badges.quality_look(cfg.badge_quality_style, tint, frost_opacity))
+                             graphic_badges.chip_looks(cfg, tint, frost_opacity))
 
     return image

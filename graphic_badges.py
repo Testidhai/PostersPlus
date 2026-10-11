@@ -356,9 +356,16 @@ def _box(text: str, h: int, filled: bool) -> Image.Image:
 # than the bare mark — set to carry the same weight as the box labels.
 QUALITY_STYLES = ("solid", "frosted")
 DEFAULT_QUALITY_STYLE = "solid"
+# The certificate (badge_cert_style) and the network and studio logos
+# (badge_logo_style) take the same choice: "solid" is the outlined box and the
+# bare white logo, "frosted" puts each on the same glass chip.
+CHIP_STYLES = QUALITY_STYLES
+DEFAULT_CHIP_STYLE = DEFAULT_QUALITY_STYLE
 _CHIP_MARK  = 0.68    # a mark's height inside its chip, of the chip height
 _CHIP_PAD   = 0.50    # a mark's total horizontal padding, of the chip height
 _CHIP_FROST = 0.78    # the tint layer's opacity when no other is given
+_CHIP_LOGO  = 0.72    # the row height a logo is sized for inside its chip, of the chip height
+_CHIP_LOGO_MAX = 0.84 # a logo's most height inside its chip; a larger one grows the chip
 
 
 def _frost_look(tint: tuple[float, float, float], opacity: float | None) -> str:
@@ -383,20 +390,43 @@ def _parse_look(look: str) -> tuple[tuple[int, int, int] | None, int]:
 
 
 def quality_style(value: str | None) -> str | None:
-    """badge_quality_style as given; None if unknown."""
+    """badge_quality_style (or badge_cert_style, badge_logo_style) as given;
+    None if unknown."""
     v = (value or "").strip().lower()
     return v if v in QUALITY_STYLES else None
 
 
+chip_style = quality_style
+
+
 def quality_look(style: str, tint: tuple[float, float, float] | None = None,
                  opacity: float | None = None) -> str | None:
-    """What row_items takes for the quality badges: None for the solid ones,
-    else the frost tint ("rgb:r,g,b", then "@alpha" with an *opacity*), or
-    "auto" while it isn't sampled (the layout pass: a chip is the same size
-    either way)."""
+    """What row_items takes for the quality badges (or the certificate, or
+    the logos): None for the solid ones, else the frost tint ("rgb:r,g,b",
+    then "@alpha" with an *opacity*), or "auto" while it isn't sampled (the
+    layout pass: a chip is the same size either way)."""
     if style != "frosted":
         return None
     return _frost_look(tint, opacity) if tint is not None else "auto"
+
+
+def chip_looks(cfg, tint: tuple[float, float, float] | None = None,
+               opacity: float | None = None) -> dict[str, str | None]:
+    """row_items' quality_look, cert_look and logo_look for a request config."""
+    return {"quality_look": quality_look(cfg.badge_quality_style, tint, opacity),
+            "cert_look": quality_look(getattr(cfg, "badge_cert_style", DEFAULT_CHIP_STYLE), tint, opacity),
+            "logo_look": quality_look(getattr(cfg, "badge_logo_style", DEFAULT_CHIP_STYLE), tint, opacity)}
+
+
+def chips_want_frost(cfg, show_quality: bool) -> bool:
+    """Whether a frosted chip may be drawn, so the frost tint is sampled:
+    frosted quality badges with quality to show, or a frosted certificate or
+    logo in some group."""
+    slots = {s for g in cfg_groups(cfg) for s in g.slots}
+    return ((show_quality and wants_frost(cfg.badge_quality_style) and groups_use_quality(cfg))
+            or (wants_frost(getattr(cfg, "badge_cert_style", "")) and "cert" in slots)
+            or (wants_frost(getattr(cfg, "badge_logo_style", ""))
+                and bool(slots & {"network", "studio"})))
 
 
 def _chip_ink(content: str, h: int) -> Image.Image | None:
@@ -433,10 +463,27 @@ def _chip_mask(w: int, h: int) -> Image.Image:
     return m.reduce(ss)
 
 
+def _logo_chip_ink(logo: "Logo", h: int, scale: float) -> Image.Image | None:
+    """A network or studio logo as chip ink: sized as on a row a little
+    shorter than the chip, so it sits inside it whatever its shape; scaled
+    up past the chip's height, the chip grows with it."""
+    mark = _logo_mark(logo, max(1, round(h * _CHIP_LOGO)), scale)
+    if mark is None:
+        return None
+    ch = max(h, round(mark.height / _CHIP_LOGO_MAX))
+    w = round(px(pxr(mark.width) + ch * _CHIP_PAD))
+    im = Image.new("RGBA", (w, ch), (255, 255, 255, 0))
+    im.alpha_composite(mark, ((w - mark.width) // 2, (ch - mark.height) // 2))
+    return im
+
+
 def _frost_chip(content: str, h: int, look: str) -> Image.Image | None:
     """The placeholder the row is laid out with (a smoked chip); draw_row
     swaps in the glass once it knows what is underneath (_resolve_chip)."""
-    ink = _chip_ink(content, h)
+    return _frost_sheet(_chip_ink(content, h), look)
+
+
+def _frost_sheet(ink: Image.Image | None, look: str) -> Image.Image | None:
     if ink is None:
         return None
     im = Image.new("RGBA", ink.size, (20, 20, 24, 0))
@@ -1194,13 +1241,17 @@ def row_items(tokens: list[str], certification: str | None, age_rating: int | No
               cinema: str | None = None,
               legacy=None,
               quality_look: str | None = None,
-              logo_scale: float = LOGO_SCALE_DEFAULT) -> list[tuple[str, Image.Image]]:
+              logo_scale: float = LOGO_SCALE_DEFAULT,
+              cert_look: str | None = None,
+              logo_look: str | None = None) -> list[tuple[str, Image.Image]]:
     """(slot, image) for each of ``slots`` this title has, in that order.
     Quality marks only when ``show_quality`` (the minimum-quality gate); the
     certificate always.  ``cinema`` is the cinema badge's key (cinema_ink), None
     for a title that is out at home.  ``quality_look`` (quality_look) puts the
-    quality marks on frosted chips, and ``logo_scale`` (badge_logo_scale)
-    multiplies the network and studio logos' size.  ``legacy`` makes the
+    quality marks on frosted chips, ``cert_look`` the certificate and
+    ``logo_look`` the network and studio logos (the same looks, from
+    badge_cert_style and badge_logo_style), and ``logo_scale``
+    (badge_logo_scale) multiplies the logos' size.  ``legacy`` makes the
     legacy slot's badge at a row height (main._legacy_badge), None when it
     draws nothing; it does its own quality gating.  Dolby Vision and Atmos in
     the same group share the combined mark, in the video slot's place."""
@@ -1254,15 +1305,24 @@ def row_items(tokens: list[str], certification: str | None, age_rating: int | No
         c = (certification or "").strip()
         if c.upper() in _US_CERTS:
             c = c.upper()
-        if certifications.known(c):
-            return _box(c, unit_h, False)
-        if age_rating:
-            return _box(f"{int(age_rating)}+", unit_h, False)
-        return None
+        if not certifications.known(c):
+            if not age_rating:
+                return None
+            c = f"{int(age_rating)}+"
+        if cert_look:
+            return _frost_chip(c, unit_h, cert_look)
+        return _box(c, unit_h, False)
+
+    def logo(lg: Logo | None):
+        if lg is None:
+            return None
+        if logo_look:
+            return _frost_sheet(_logo_chip_ink(lg, unit_h, logo_scale), logo_look)
+        return _logo_mark(lg, unit_h, logo_scale)
 
     build = {"video": video, "audio": audio, "res": res, "cert": cert,
-             "network": lambda: _logo_mark(network, unit_h, logo_scale) if network else None,
-             "studio": lambda: _logo_mark(studio, unit_h, logo_scale) if studio else None,
+             "network": lambda: logo(network),
+             "studio": lambda: logo(studio),
              "cinema": lambda: _cinema_mark(cinema, unit_h) if cinema else None,
              "legacy": lambda: legacy(unit_h) if legacy else None}
     items = [(slot, build[slot]()) for slot in slots]
