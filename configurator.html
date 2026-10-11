@@ -2004,6 +2004,9 @@
   .tl-rank-row select { flex: 1; min-width: 0; }
   .tl-top10 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .tl-top10 select { flex: 1 1 160px; min-width: 0; }
+  /* As tall as the dropdowns beside it, and no gap for an empty hint. */
+  .tl-top10 .btn-search { align-self: stretch; }
+  #tl-top10-hint:empty { display: none; }
   .report-cats { display: flex; flex-direction: column; gap: 6px; }
   .report-cats label {
     display: flex; align-items: center; gap: 10px; cursor: pointer;
