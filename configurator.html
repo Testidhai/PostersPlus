@@ -1976,8 +1976,13 @@
   .tl-scroll {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    display: flex; flex-direction: column; gap: 18px; padding-right: 4px;
+    display: flex; flex-direction: column; gap: 18px;
+    /* Room between the options and a slim scrollbar, as the side panel's. */
+    padding-right: 14px; margin-right: -6px;
+    scrollbar-width: thin; scrollbar-color: var(--black4) transparent;
   }
+  .tl-scroll::-webkit-scrollbar { width: 4px; }
+  .tl-scroll::-webkit-scrollbar-thumb { background: var(--black4); border-radius: 2px; }
   .trending-lists-fields { display: flex; flex-direction: column; gap: 14px; }
   .trending-lists-fields .field { margin: 0; }
   .tl-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
