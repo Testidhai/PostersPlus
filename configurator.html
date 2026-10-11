@@ -1991,6 +1991,8 @@
   .tl-rank-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
   .tl-rank-row[hidden] { display: none; }
   .tl-rank-row select { flex: 1; min-width: 0; max-width: 280px; }
+  .tl-top10 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .tl-top10 select { flex: 1 1 160px; min-width: 0; }
   .report-cats { display: flex; flex-direction: column; gap: 6px; }
   .report-cats label {
     display: flex; align-items: center; gap: 10px; cursor: pointer;
@@ -6552,7 +6554,9 @@ function parseTrendingList(raw) {
     if (!e) continue;
     if (v === 'none') { out[e] = []; continue; }
     const offered = new Set(caps.lists[e].choices.map(ch => ch.id));
-    const picks = [...new Set((v || '').split('.').map(x => x.trim()).filter(x => offered.has(x)))]
+    // A Streaming Top 10 chart: which there are is the server's to say.
+    const ok = x => offered.has(x) || (caps.top10 && _TL_TOP10_ID.test(x));
+    const picks = [...new Set((v || '').split('.').map(x => x.trim()).filter(ok))]
       .slice(0, caps.max_picks || 8);
     if (picks.length) out[e] = picks;
   }
@@ -6577,8 +6581,15 @@ function currentTrendingList() {
   if (!serverCaps.trending_lists) return vEl('cfg-trending-list');
   return trendingListToken(parseTrendingList(vEl('cfg-trending-list')));
 }
+// Streaming Top 10 picks: "fp_<service>_<country>" (top10_charts.py).
+const _TL_TOP10_ID = /^fp_([a-z0-9][a-z0-9-]{0,24})_([a-z]{2})$/;
 function _tlName(e, id) {
-  return (serverCaps.trending_lists.lists[e].choices.find(ch => ch.id === id) || {}).name || id;
+  const caps = serverCaps.trending_lists;
+  const m = _TL_TOP10_ID.exec(id);
+  if (m && caps.top10) {
+    return `${caps.top10.services[m[1]] || m[1]} Top 10 (${caps.top10.regions[m[2]] || m[2].toUpperCase()})`;
+  }
+  return (caps.lists[e].choices.find(ch => ch.id === id) || {}).name || id;
 }
 function trendingListSummary(pick) {
   const caps = serverCaps.trending_lists;
@@ -6596,7 +6607,10 @@ function _fillTrendingListsModal(pick) {
   const esc = t => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const rows = _TL_ENDPOINTS.map(e => {
     const picked = new Set(pick[e]);
-    const opts = caps.lists[e].choices.map(ch => `
+    // The menu, then the Streaming Top 10 charts picked.
+    const choices = caps.lists[e].choices.concat(
+      pick[e].filter(id => _TL_TOP10_ID.test(id)).map(id => ({ id, name: _tlName(e, id) })));
+    const opts = choices.map(ch => `
         <div class="tl-opt">
           <label class="tl-opt-name">
             <input type="checkbox" data-tl="${e}" value="${esc(ch.id)}"${picked.has(ch.id) ? ' checked' : ''}
@@ -6614,6 +6628,18 @@ function _fillTrendingListsModal(pick) {
       </div>
     </div>`;
   });
+  if (caps.top10) {
+    rows.push(`
+    <div class="field">
+      <label class="field-label" data-tip="Each streaming service's daily Top 10 in a country, from FlixPatrol's charts. Added under Movies, Series or Anime, whichever the service has a chart for, as a catalog of its own.">Streaming Top 10</label>
+      <div class="tl-top10">
+        <select id="tl-top10-country" onchange="_tlTop10Services()" disabled><option>Loading…</option></select>
+        <select id="tl-top10-service" disabled></select>
+        <button type="button" class="btn-search" id="tl-top10-add" onclick="_tlTop10Add()" disabled>Add</button>
+      </div>
+      <div class="field-hint" id="tl-top10-hint"></div>
+    </div>`);
+  }
   rows.push(`
     <div class="field">
       <label class="field-label" for="tl-home" data-tip="Leave off films still in cinemas or not out yet, series whose first episode hasn't aired and anime not yet airing. The rest are ranked 1, 2, 3 without gaps.">Not Out at Home Yet</label>
@@ -6640,6 +6666,76 @@ function _fillTrendingListsModal(pick) {
   document.getElementById('trending-lists-fields').innerHTML = rows.join('');
   document.getElementById('trending-lists-msg').hidden = true;
   _TL_ENDPOINTS.forEach(_tlSync);
+  if (caps.top10) _tlTop10Load();
+}
+
+// ── Streaming Top 10 picker ──
+// The countries and services there are, read from /trending-top10 when
+// the dialog first opens.
+let _tlTop10Menu = null;
+async function _tlTop10Load() {
+  const hint = document.getElementById('tl-top10-hint');
+  try {
+    if (!_tlTop10Menu) {
+      const ak = vEl('cfg-access-key');
+      const resp = await fetch(`/trending-top10${ak ? '?access_key=' + encodeURIComponent(ak) : ''}`);
+      if (!resp.ok) throw new Error(resp.status);
+      _tlTop10Menu = await resp.json();
+    }
+  } catch (err) {
+    if (hint) hint.textContent = 'Streaming Top 10 charts could not be loaded.';
+    return;
+  }
+  const sel = document.getElementById('tl-top10-country');
+  if (!sel) return;
+  const regions = Object.entries(_tlTop10Menu.regions)
+    .sort((a, b) => a[1].name.localeCompare(b[1].name));
+  sel.innerHTML = '';
+  for (const [iso, r] of regions) sel.add(new Option(r.name, iso));
+  sel.value = _tlTop10Menu.regions.us ? 'us' : (regions[0] || [''])[0];
+  sel.disabled = false;
+  _tlTop10Services();
+}
+function _tlTop10Services() {
+  const iso = vEl('tl-top10-country');
+  const sel = document.getElementById('tl-top10-service');
+  const services = Object.keys((_tlTop10Menu.regions[iso] || {}).services || {})
+    .sort((a, b) => (_tlTop10Menu.services[a] || a).localeCompare(_tlTop10Menu.services[b] || b));
+  sel.innerHTML = '';
+  for (const s of services) sel.add(new Option(_tlTop10Menu.services[s] || s, s));
+  sel.disabled = document.getElementById('tl-top10-add').disabled = !services.length;
+}
+function _tlTop10Add() {
+  const iso = vEl('tl-top10-country'), service = vEl('tl-top10-service');
+  const endpoints = ((_tlTop10Menu.regions[iso] || {}).services || {})[service] || [];
+  const id = `fp_${service}_${iso}`;
+  const max = serverCaps.trending_lists.max_picks || 8;
+  const added = [], full = [];
+  for (const e of endpoints) {
+    const box = document.getElementById(`tl-opts-${e}`);
+    if (!box) continue;
+    let tick = box.querySelector(`input[type="checkbox"][value="${id}"]`);
+    if (!tick) {
+      if (box.querySelectorAll('input[type="checkbox"]:checked').length >= max) { full.push(_TL_NAMES[e]); continue; }
+      const opt = document.createElement('div');
+      opt.className = 'tl-opt';
+      opt.innerHTML = `<label class="tl-opt-name"><input type="checkbox" data-tl="${e}" onchange="_tlSync('${e}')"><span></span></label>`;
+      tick = opt.querySelector('input');
+      tick.value = id;
+      opt.querySelector('span').textContent = _tlName(e, id);
+      box.appendChild(opt);
+    } else if (!tick.checked && box.querySelectorAll('input[type="checkbox"]:checked').length >= max) {
+      full.push(_TL_NAMES[e]);
+      continue;
+    }
+    tick.checked = true;
+    _tlSync(e);
+    added.push(_TL_NAMES[e]);
+  }
+  const name = _tlName(endpoints[0] || 'movie', id);
+  document.getElementById('tl-top10-hint').textContent =
+    (added.length ? `Added ${name} to ${added.join(' and ')}.` : '')
+    + (full.length ? ` ${full.join(' and ')} already ${full.length > 1 ? 'have' : 'has'} ${max} lists.` : '');
 }
 // The Poster URL dropdown offers the ticked lists only (shown once two are),
 // keeping its choice while that list stays ticked; ticking stops at the most

@@ -164,6 +164,14 @@ The name is what visitors see, and its slug (`trakt-trending`) is what their URL
 
 Default: (empty)
 
+### `TRENDING_TOP10_URL`
+
+Where Choose Lists' **Streaming Top 10** charts are read: each streaming service's daily Top 10 in each of 119 countries, as FlixPatrol publishes them. The default is the fp-crawler project's daily copies on GitHub, the same files AIOMetadata's Top 10 catalogs read. If that copy goes away, point this at a mirror of the same files: `availability.json` (which services each country has) and one `<country>.json` per country (`united-kingdom.json`, `global.json`).
+
+While the charts can't be read, each Streaming Top 10 catalog keeps serving the last list it had rather than going empty. The picker's index of countries and services is stored in the cache volume, so it survives a restart. Turn the whole feature off by leaving `flixpatrol` out of `TRENDING_LIST_SOURCES`.
+
+Default: `https://raw.githubusercontent.com/0xConstant1/fp-crawler/main/catalogs`
+
 ### `TRENDING_SOURCE_MAX_ITEMS`
 
 Cap on entries taken from a custom trending source (default 500).

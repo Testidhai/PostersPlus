@@ -22,6 +22,17 @@
   (non-English), Japanese, Korean, Spanish, French, German or Hindi
   (`trending_list=l:ko.ja`). Ranks are numbered without gaps after the cut,
   the catalog's name says which languages, and anime lists are unaffected.
+- **Streaming Top 10** in Choose Lists: pick a country and a service and
+  add its daily Top 10 as a catalog, for 119 countries and 60+ services:
+  Hulu, Peacock, Tubi, Starz, AMC+ and more in the US, every country's
+  Netflix, Disney+, Prime Video, Apple TV+, HBO Max and Paramount+, a real
+  Shudder Top 10 in the US, UK and Canada, Crunchyroll's for the anime
+  lists, and worldwide charts. These are FlixPatrol's charts as the
+  fp-crawler project publishes them daily, the same ones AIOMetadata's Top
+  10 catalogs use (`TRENDING_TOP10_URL` points at a mirror if needed). A
+  service with only a mixed chart (Shudder, Crunchyroll) gives each list
+  its own kind of title from it. If the charts can't be read, each catalog
+  keeps its last list rather than going empty.
 - **Shudder** as a source for Movies and Series: **Shudder Popular** (what
   streams on Shudder in the US, by TMDB popularity) and **New on Shudder**
   (the same, released or airing in the last two years). No chart of

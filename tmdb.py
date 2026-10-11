@@ -14,6 +14,7 @@ import numpy as np
 
 import cinemeta
 import trending_lists
+import top10_charts
 import tvdb
 
 logger = logging.getLogger(__name__)
@@ -2230,6 +2231,8 @@ async def fetch_trending_source_ids(
         return None
     if url.startswith(trending_lists.PROVIDER_SCHEME):
         return await _fetch_tmdb_provider_ids(client, tmdb_key, media_type, url, details_out)
+    if url.startswith(top10_charts.SCHEME):
+        return await top10_charts.fetch_ids(client, media_type, url, details_out)
     # The operator's source keeps the cooldown it always had; a chosen one
     # has its own, so one broken list doesn't silence the others.
     cooldown = media_type if url == operator_url else (
@@ -2798,6 +2801,14 @@ async def _ensure_trending_snapshot(
                 # usually a transient fetch failure; the source's own
                 # retry cooldown already stops this from re-fetching per
                 # request.  Nothing to rank against this time round.
+                if source_url.startswith(top10_charts.SCHEME):
+                    # A Streaming Top 10 chart serves its last list rather
+                    # than none: one copy of the charts backs them all, so
+                    # its going away would otherwise empty every row at once.
+                    stale = get_cached_trending_snapshot_entry(key, include_stale=True)
+                    if stale is not None and stale[0]:
+                        logger.warning(f"Trending {key}: chart unreadable, serving its last list")
+                        return stale[0], time.time() + _TRENDING_SOURCE_RETRY_SECS
                 return None
             ids = source_ids
         else:

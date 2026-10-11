@@ -867,6 +867,7 @@ import graphic_badges
 import rating_badges
 import trending_rank
 import trending_lists
+import top10_charts
 import awards as _awards_mod
 if not _awards_mod._HAS_SKIA:
     # Still correct, just ~3x slower per sash — worth saying once, since the
@@ -6676,6 +6677,9 @@ async def _run_trending_fetch_cycle(client: httpx.AsyncClient) -> None:
     # picks gone quiet are rebuilt when next asked for, and dropped after a
     # while.
     await asyncio.to_thread(prune_trending_choices, _TRENDING_CHOICE_MAX_AGE)
+    # Which Streaming Top 10 charts there are, before the picks of them are
+    # told apart below.
+    await top10_charts.refresh_availability(client)
 
     # Build the set of trending (tmdb_id, type) pairs. TV titles are cached under
     # both "tv" and "series" (Stremio uses "series"), so include both variants.
@@ -6754,7 +6758,7 @@ def _warm_trending_choices() -> "list[tuple[str, str, trending_lists.TrendingLis
         endpoint, lists = trending_lists.from_key(key)
         if endpoint not in trending_lists.ENDPOINTS or lists.key(endpoint) != key:
             continue
-        if lists.source(endpoint) not in trending_lists.pickable(endpoint):
+        if not trending_lists.offered(endpoint, lists.source(endpoint)):
             continue
         out.append((key, endpoint, lists))
     return sorted(out, key=lambda c: (c[1] not in ANIME_ENDPOINTS, c[0]))
@@ -7489,7 +7493,7 @@ def _resolve_trending_catalog(cid: str, ctype: str) -> "tuple[str, str] | None":
             # Only what a visitor may pick: with TRENDING_LIST_CHOICE off,
             # none but the operator's own list is built for anyone.
             source = cid[len(base) + 1:]
-            if source in trending_lists.pickable(endpoint):
+            if trending_lists.offered(endpoint, source):
                 return endpoint, source
     return None
 
@@ -7794,6 +7798,21 @@ async def trending_addon(rest: str, request: Request):
     if poster_cfg is not None and not _cfg.PUBLIC_URL:
         response.headers["Vary"] = _FORWARDED_VARY
     return response
+
+
+@app.get("/trending-top10")
+async def trending_top10(access_key: str = ""):
+    """Choose Lists' Streaming Top 10 picker: each country's services and the
+    lists each can be a catalog of.  Apart from /server-caps, as it is read
+    only when the picker opens."""
+    if not _configurator_key_ok(access_key):
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    if _HTTP_CLIENT is not None:
+        await top10_charts.refresh_availability(_HTTP_CLIENT)
+    menu = top10_charts.caps()
+    if menu is None:
+        raise HTTPException(status_code=404, detail="Streaming Top 10 is off on this instance")
+    return JSONResponse(menu, headers={"Cache-Control": "public, max-age=3600"})
 
 
 @app.get("/server-caps")

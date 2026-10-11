@@ -29,6 +29,7 @@ import re
 from dataclasses import dataclass
 
 import config
+import top10_charts
 
 ENDPOINTS = ("movie", "tv", "anime", "anime_movie")
 ANIME_ENDPOINTS = ("anime", "anime_movie")
@@ -121,6 +122,7 @@ FAMILIES = {
     "imdb": "IMDb", "trakt": "Trakt", "simkl": "SIMKL", "justwatch": "JustWatch",
     "rottentomatoes": "Rotten Tomatoes", "tvstats": "Television Stats",
     "top10": "Streaming Top 10s (US)", "shudder": "Shudder (US)",
+    top10_charts.FAMILY: "Streaming Top 10 (by country)",
 }
 # Original languages the movie and TV lists may be cut down to (l:), as
 # (code, name); "non-en" is every language but English.  None picked is all.
@@ -224,14 +226,23 @@ def menu(endpoint: str) -> list[tuple[str, str]]:
 
 
 def pickable(endpoint: str) -> "set[str]":
-    """The source ids a visitor may ask *endpoint*'s list from: the menu, or
-    only the operator's own while visitors may not choose."""
+    """The source ids of *endpoint*'s menu a visitor may ask its list from,
+    or only the operator's own while visitors may not choose.  Streaming
+    Top 10's charts are offered besides (see offered)."""
     if not config.TRENDING_LIST_CHOICE:
         return {default_source(endpoint)}
     return {i for i, _n in menu(endpoint)}
 
 
+def offered(endpoint: str, source: str) -> bool:
+    """Whether a visitor may ask *endpoint*'s list from *source*: the menu,
+    or a Streaming Top 10 chart the index has for it."""
+    return source in pickable(endpoint) or top10_charts.offered(endpoint, source)
+
+
 def source_name(endpoint: str, source: str) -> str:
+    if top10_charts.parse_id(source):
+        return top10_charts.name(source)
     return dict(menu(endpoint)).get(source, source)
 
 
@@ -239,6 +250,8 @@ def source_url(endpoint: str, source: str) -> str:
     """The URL *source* is read from, or "" for TMDB's and AniList's own."""
     if source == SERVER:
         return operator_url(endpoint)
+    if top10_charts.parse_id(source):
+        return top10_charts.url(source)
     for b in _BUILTIN[endpoint]:
         if b[0] == source:
             return b[3]
@@ -347,11 +360,13 @@ def parse(raw: "str | None") -> TrendingLists:
     base = default()
     if not raw or not config.TRENDING_LIST_CHOICE:
         return base
-    return _parse(raw.strip().lower()[:200], base)
+    return _parse(raw.strip().lower()[:400], base, top10_charts.version())
 
 
 @functools.lru_cache(maxsize=256)
-def _parse(raw: str, base: TrendingLists) -> TrendingLists:
+def _parse(raw: str, base: TrendingLists, _top10_version: int) -> TrendingLists:
+    # _top10_version: a pick of a chart the index didn't have yet is read
+    # again once it does.
     shown = {e: (base.source(e),) for e in ENDPOINTS}
     home = base.home
     langs: tuple[str, ...] = ()
@@ -371,11 +386,10 @@ def _parse(raw: str, base: TrendingLists) -> TrendingLists:
         if value == "none":
             shown[endpoint] = ()
             continue
-        offered = pickable(endpoint)
         picks: list[str] = []
         for source in value.split("."):
             source = source.strip()
-            if _ID_RE.match(source) and source in offered and source not in picks:
+            if _ID_RE.match(source) and offered(endpoint, source) and source not in picks:
                 picks.append(source)
         if picks:
             shown[endpoint] = tuple(picks[:MAX_PICKS])
@@ -425,6 +439,11 @@ def caps() -> dict:
         "home_default": base.home,
         "max_picks": MAX_PICKS,
         "languages": [{"id": c, "name": n} for c, n in LANGUAGES],
+        # Streaming Top 10: names for "fp_<service>_<iso>" picks; the
+        # picker reads which there are from /trending-top10.
+        "top10": {"services": top10_charts.SERVICE_NAMES,
+                  "regions": {i: top10_charts.region_name(r) for i, r in top10_charts.REGIONS.items()}}
+        if top10_charts.enabled() else None,
         "lists": {
             e: {"default": base.source(e),
                 "choices": [{"id": i, "name": n} for i, n in menu(e)]}
