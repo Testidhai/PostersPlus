@@ -57,6 +57,20 @@ reference is generated — run `python3 tools/settings_docs.py --write` — and
 `tests/test_settings_docs.py` fails if any of the three is out of step, or if
 a module reads a setting from `os.environ` behind the registry's back.
 
+## Adding a poster URL setting
+
+A setting the poster URL carries also needs a short name, which the
+configurator writes in place of the long one: add it to the end of
+`ALIASES` in `param_aliases.py` (a `landscape_` twin is `_` and its portrait
+short name), to `tests/data/param_aliases_snapshot.json`, and to the table in
+URL_REFERENCE.md. A short name is permanent once released, since installed
+URLs carry it: never change or reuse one. `tests/test_param_aliases.py` fails
+if a setting has none, two clash, or a released one changed.
+
+If the configurator only sends the setting in one state (say, only when it is
+switched on), the server's default must be the other state, or the user has
+no way to send it: the same test checks every such line in `buildBaseParams`.
+
 ## Before opening a PR
 
 The configurator URL behavior tests use Node.js on `PATH`. CI explicitly installs

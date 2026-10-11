@@ -868,6 +868,7 @@ import rating_badges
 import trending_rank
 import trending_lists
 import top10_charts
+import param_aliases
 import awards as _awards_mod
 if not _awards_mod._HAS_SKIA:
     # Still correct, just ~3x slower per sash — worth saying once, since the
@@ -7377,6 +7378,26 @@ class _ClientIpMiddleware:
             _request_client_ip.reset(token)
 
 
+class _ParamAliasMiddleware:
+    """Spells out a poster URL's short setting names (param_aliases) before
+    routing, so everything after (the endpoint's parameters, the render
+    settings, the composite cache key, the stored request a cached poster is
+    re-rendered from) sees one spelling, whichever the URL used.  Plain ASGI,
+    as _ClientIpMiddleware is, and only on /poster: the other endpoints'
+    parameters are not settings."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path") == "/poster" and scope.get("query_string"):
+            pairs = parse_qsl(scope["query_string"].decode("utf-8", "replace"), keep_blank_values=True)
+            if any(k in param_aliases.LONG for k, _v in pairs):
+                scope = {**scope, "query_string": urlencode(param_aliases.expand(pairs)).encode("ascii")}
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(_ParamAliasMiddleware)
 app.add_middleware(_ClientIpMiddleware)
 app.add_middleware(log_store.RequestIdMiddleware)
 
@@ -7551,7 +7572,7 @@ def _decode_addon_cfg(segment: str) -> list[tuple[str, str]]:
         ).decode("ascii")
     except Exception:
         raise HTTPException(status_code=400, detail="Unreadable addon config")
-    return [(k, v) for k, v in parse_qsl(query, keep_blank_values=True)
+    return [(k, v) for k, v in param_aliases.expand(parse_qsl(query, keep_blank_values=True))
             if k not in _ADDON_CFG_IDENTITY]
 
 
@@ -7595,7 +7616,7 @@ def _addon_poster_url(
         # is a new URL, so a client holding last list's image (its rank
         # baked in) for its max-age fetches this one's instead.
         ids.append((_LIST_VERSION_PARAM, version))
-    return f"{base}/poster?{urlencode(ids + cfg)}"
+    return f"{base}/poster?{urlencode(ids + param_aliases.shorten(cfg))}"
 
 
 _LIST_VERSION_PARAM = "rv"
@@ -7856,6 +7877,8 @@ async def server_caps(request: Request, access_key: str = ""):
         "param_defaults":        _render_param_defaults(),
         "param_defaults_landscape": _render_param_defaults("landscape"),
         "never_omitted_params":  sorted(_NEVER_OMITTED_PARAMS),
+        # Short spellings of the settings for generated URLs (param_aliases).
+        "param_aliases":         param_aliases.ALIASES,
         # Which settings also take a landscape_-prefixed per-shape value, and
         # which of those a landscape render never reads from the plain name.
         "landscape_split_params": [*_LANDSCAPE_SPLIT_PARAMS, *_LANDSCAPE_OWN_PARAMS],

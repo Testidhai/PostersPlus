@@ -10,11 +10,13 @@ import time
 import unittest
 from pathlib import Path
 from unittest import mock
+from urllib.parse import parse_qsl, urlsplit
 
 from fastapi.testclient import TestClient
 
 import anime
 import cache
+import param_aliases
 import main
 import tmdb
 from tests.test_trending_snapshot_turnover import _TempDb
@@ -22,6 +24,15 @@ from tests.test_trending_snapshot_turnover import _TempDb
 # The stored movie / TV lists' signature while anime has its own lists.
 TMDB_SIG = "tmdb" + tmdb._ANIME_SPLIT_MARK
 
+
+
+def _poster_query(url: str) -> dict:
+    """A poster URL's settings as the server reads them: short names spelled
+    out (param_aliases)."""
+    out: dict = {}
+    for k, v in param_aliases.expand(parse_qsl(urlsplit(url).query, keep_blank_values=True)):
+        out.setdefault(k, []).append(v)
+    return out
 
 class _AddonTest(_TempDb):
     def setUp(self):
@@ -193,8 +204,8 @@ class AddonConfigTests(_AddonTest):
                             **{"x-forwarded-proto": "https", "x-forwarded-host": "posters.example"})
         poster = metas[0]["poster"]
         self.assertTrue(poster.startswith("https://posters.example/poster?"), poster)
-        from urllib.parse import parse_qs, urlsplit
-        q = parse_qs(urlsplit(poster).query)
+        from urllib.parse import urlsplit
+        q = _poster_query(poster)
         self.assertEqual(q["tmdb_id"], ["11"])
         self.assertEqual(q["imdb_id"], ["tt0000011"])
         self.assertEqual(q["type"], ["movie"])
@@ -204,7 +215,7 @@ class AddonConfigTests(_AddonTest):
         self.assertNotIn("shape", q)
         self.assertEqual(len(q["tmdb_id"]), 1)
         # The same settings drawn 16:9 for landscape rows.
-        lq = parse_qs(urlsplit(metas[0]["landscapePoster"]).query)
+        lq = _poster_query(metas[0]["landscapePoster"])
         self.assertEqual(lq["shape"], ["landscape"])
         self.assertEqual(lq["tmdb_id"], ["11"])
         self.assertEqual(lq["badge_display_mode"], ["6"])

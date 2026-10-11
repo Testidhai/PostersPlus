@@ -9,9 +9,10 @@ import asyncio
 import time
 import unittest
 from unittest import mock
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import cache
+import param_aliases
 import config
 import main
 import tmdb
@@ -19,6 +20,15 @@ import trending_lists
 from tests.test_trending_catalogs_addon import TMDB_SIG, _AddonTest, _cfg_segment
 from tests.test_trending_snapshot_turnover import _TempDb
 
+
+
+def _poster_query(url: str) -> dict:
+    """A poster URL's settings as the server reads them: short names spelled
+    out (param_aliases)."""
+    out: dict = {}
+    for k, v in param_aliases.expand(parse_qsl(urlsplit(url).query, keep_blank_values=True)):
+        out.setdefault(k, []).append(v)
+    return out
 
 class _Menu:
     """Patches the operator's trending config for one test."""
@@ -251,7 +261,7 @@ class AddonListsTests(_AddonTest):
     def test_posters_rank_on_the_rows_lists(self):
         seg = _cfg_segment("badge_display_mode=6&trending_list=h:1")
         metas = self._metas(f"/trending/sekrit/tl-m:tmdb_week/{seg}/catalog/movie/pp.trending.movie.tmdb_week.json")
-        q = parse_qs(urlsplit(metas[0]["poster"]).query)
+        q = _poster_query(metas[0]["poster"])
         self.assertEqual(q["trending_list"], ["m:tmdb_week"])
         self.assertEqual(q["badge_display_mode"], ["6"])
 
@@ -355,9 +365,9 @@ class MultiCatalogAddonTests(_AddonTest):
         seg = _cfg_segment("badge_display_mode=6")
         metas = self._metas(f"/trending/sekrit/tl-m:tmdb.imdb/{seg}/catalog/movie/pp.trending.movie.imdb.json")
         self.assertEqual([m["id"] for m in metas], ["tt0000033", "tt0000011"])
-        self.assertEqual(parse_qs(urlsplit(metas[0]["poster"]).query)["trending_list"], ["m:imdb"])
+        self.assertEqual(_poster_query(metas[0]["poster"])["trending_list"], ["m:imdb"])
         plain = self._metas(f"/trending/sekrit/tl-m:tmdb.imdb/{seg}/catalog/movie/pp.trending.movie.json")
-        self.assertNotIn("trending_list", parse_qs(urlsplit(plain[0]["poster"]).query))
+        self.assertNotIn("trending_list", _poster_query(plain[0]["poster"]))
 
     def _metas(self, path):
         resp = self.client.get(path)

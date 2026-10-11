@@ -6510,7 +6510,7 @@ function trendingAddonConfigSegment() {
       p.set('cinema_greyscale_without_sash', 'true');
     }
   }
-  const query = p.toString();
+  const query = shortenParams(p).toString();
   if (!query) return '';
   return 'cfg-' + btoa(query).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
@@ -6599,6 +6599,16 @@ function trendingListToken(pick) {
   if (pick.home !== !!caps.home_default) parts.push(`h:${pick.home ? 1 : 0}`);
   if (pick.langs && pick.langs.length) parts.push(`l:${pick.langs.join('.')}`);
   return parts.join(',');
+}
+// The pick's ranking lists alone (TrendingLists.rank_token): each type's
+// first list, the home and language choices.
+function trendingRankToken() {
+  if (!serverCaps.trending_lists) return vEl('cfg-trending-list');
+  const pick = parseTrendingList(vEl('cfg-trending-list'));
+  if (!pick) return '';
+  const caps = serverCaps.trending_lists;
+  for (const e of _TL_ENDPOINTS) pick[e] = [pick[e][0] || caps.lists[e].default];
+  return trendingListToken(pick);
 }
 // The saved pick, re-read against the menu: a choice the instance no longer
 // offers is dropped, as the server would read it.
@@ -7078,8 +7088,11 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
   else if (landscape) params.set('shape', 'landscape');
   params.set('primary_client', vEl('cfg-primary-client') || 'stremio_desktop_web');
   for (const [k, v] of Object.entries(_legacyInsets)) params.set(k, v);
-  // Both shapes rank on the same lists.
-  const _tl = currentTrendingList();
+  // Both shapes rank on the same lists.  A poster only reads the list it
+  // ranks on per type (the server drops the rest: trending_lists rank_token),
+  // so a URL for a client carries just those; the saved settings and a
+  // shared URL keep every catalog picked, to be imported again.
+  const _tl = (full || templateId === 'share') ? currentTrendingList() : trendingRankToken();
   if (_tl) params.set('trending_list', _tl);
   if (accKey)         params.set('access_key',  accKey);
   // A client that has no "{tmdb_key}" / "{mdblist_key}" of its own would send
@@ -7587,6 +7600,57 @@ function omitServerDefaults(params) {
   return out;
 }
 
+// Whether a setting is an on/off one, by the server's own default for it (a
+// "landscape_" twin by its portrait one's).
+function _isBoolParam(key) {
+  const d = serverCaps.param_defaults || {}, l = serverCaps.param_defaults_landscape || {};
+  if (key in d || key in l) return typeof (key in d ? d[key] : l[key]) === 'boolean';
+  const base = key.startsWith('landscape_') ? key.slice(10) : null;
+  return !!base && typeof (base in d ? d[base] : l[base]) === 'boolean';
+}
+
+// The last step of a generated URL: each setting by its short name
+// (param_aliases.py, from /server-caps) and on/off as 1/0, which the server
+// reads the same.  Only spelling: which settings are sent, and that an "off"
+// against an "on" default is sent at all, is decided before this.  Without
+// /server-caps it changes nothing, and the URL is just longer.
+function shortenParams(params) {
+  const aliases = serverCaps.param_aliases;
+  if (!aliases) return params;
+  const out = new URLSearchParams();
+  for (const [key, value] of params) {
+    const bool = (value === 'true' || value === 'false') && _isBoolParam(key);
+    out.append(aliases[key] || key, bool ? (value === 'true' ? '1' : '0') : value);
+  }
+  return out;
+}
+
+// shortenParams for a whole URL, after any edits by long name; keeps the
+// client placeholders literal, as buildBaseParams leaves them.
+function shortenUrl(url) {
+  const q = url.indexOf('?');
+  if (q < 0) return url;
+  return decodePlaceholders(url.slice(0, q + 1) + shortenParams(new URLSearchParams(url.slice(q + 1))).toString());
+}
+
+// The reverse, for an imported URL: every short name spelled out (the long
+// one winning where a URL has both, as on the server) and on/off as
+// true/false, which is what the import below reads.
+function expandParams(params) {
+  const aliases = serverCaps.param_aliases;
+  if (!aliases) return params;
+  const long = Object.fromEntries(Object.entries(aliases).map(([l, sh]) => [sh, l]));
+  const present = new Set(params.keys());
+  const out = new URLSearchParams();
+  for (const [key, value] of params) {
+    const name = long[key] || key;
+    if (long[key] && present.has(name)) continue;
+    const bool = (value === '1' || value === '0') && _isBoolParam(name);
+    out.append(name, bool ? (value === '1' ? 'true' : 'false') : value);
+  }
+  return out;
+}
+
 // Compare a query-string value against a default that arrived as real JSON.
 // Numbers have to be compared numerically: the URL carries "0.080" where the
 // config holds 0.08, and a string comparison would call those different and
@@ -7610,13 +7674,13 @@ function buildPreviewUrl() {
   // change would only cost the server time. Every fixed-pixel setting scales
   // with the canvas, so the layout is the same either way.
   const url = buildBaseParams({ usePlaceholders: false, domainOverride: override });
-  if (serverCaps.preview_at_resolution) return url;
+  if (serverCaps.preview_at_resolution) return shortenUrl(url);
   try {
     const u = new URL(url);
-    if (!u.searchParams.has('resolution')) return url;
+    if (!u.searchParams.has('resolution')) return shortenUrl(url);
     u.searchParams.delete('resolution');
-    return u.toString();
-  } catch { return url; }
+    return shortenUrl(u.toString());
+  } catch { return shortenUrl(url); }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -7746,7 +7810,7 @@ function buildShareUrl() {
   // The plain list, not the "default,..." diff: the recipient's default order
   // may not be this server's.
   if (p.has('sash_priority')) p.set('sash_priority', getSashPriorityParam({ compact: false }));
-  return decodePlaceholders(`${origin}/poster?${p.toString()}`);
+  return shortenUrl(`${origin}/poster?${p.toString()}`);
 }
 
 function isShareUrl(raw) {
@@ -7775,7 +7839,7 @@ function rememberedTemplate() {
 function displayedTemplate() { return rememberedTemplate(); }
 
 function buildTemplateUrl(templateId = displayedTemplate().id) {
-  return buildBaseParams({ usePlaceholders: true, templateId });
+  return shortenUrl(buildBaseParams({ usePlaceholders: true, templateId }));
 }
 
 // Touch has no right-click, so press-and-hold is the second way into the menu.
@@ -10016,6 +10080,9 @@ function importUrl(urlStr, { silent = false, settingsOnly = false, preserveClien
     if (!silent) setStatus('Import failed — not a valid URL.', 'err');
     return false;
   }
+  // A generated URL names its settings short (shortenParams): spelled out
+  // here, so everything below reads one spelling.
+  parsed.search = expandParams(parsed.searchParams).toString();
   // A "{shape}" URL is not a URL for one shape — it is both, and the preview
   // can only be one at a time. It opens portrait (the test below reads it as
   // "not landscape") because that is the slot every client fills; the

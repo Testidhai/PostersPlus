@@ -15,6 +15,19 @@
   sliders now show whenever frosted chips or the disc are on, even with a
   dark info badge, which hides them otherwise.
 
+### Shorter poster URLs
+
+- Copied poster URLs are about 60% shorter for the same settings: every
+  setting has a short name (`vpcb` for `vignette_poster_color_bottom`) and
+  on/off settings are `1`/`0`, so a heavily customised URL stays well
+  inside the ~2000 characters some metadata clients cut URLs at. The
+  server reads either spelling as the same poster and the same cache entry,
+  so every existing URL keeps working; the dashboard's Reports still show
+  settings by their full names. URL_REFERENCE.md lists the short names.
+- A copied poster URL carries only the trending list each type ranks on,
+  not every catalog ticked for the Trending addon (the posters only ever
+  read that one). Saved settings and Share links still keep the full pick.
+
 ### Choose your trending lists
 
 - **Original Language** in the trending **Configure** dialog keeps only titles first made in the
