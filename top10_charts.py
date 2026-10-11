@@ -1,5 +1,5 @@
-"""Streaming services' daily Top 10s, by country (Choose Lists' Streaming
-Top 10).
+"""Streaming services' daily Top 10s, by country (the trending Configure dialog's
+Streaming Top 10).
 
 FlixPatrol's charts, as the fp-crawler project publishes them (the same
 data AIOMetadata's Top 10 catalogs read): one JSON file per country, each

@@ -154,7 +154,7 @@ Default: `172800`
 
 ### `TRENDING_SOURCE_CHOICES`
 
-More trending lists visitors may pick in the configurator's Choose Lists, while `TRENDING_LIST_CHOICE` is on. Comma-separated `type|Name|URL` entries, where `type` is `movie`, `tv`, `anime` or `anime_movie` and the URL is an MDBList list page or a TMDB-shaped JSON endpoint, as for `TRENDING_SOURCE_MOVIE`:
+More trending lists visitors may pick in the configurator's trending **Configure** dialog, while `TRENDING_LIST_CHOICE` is on. Comma-separated `type|Name|URL` entries, where `type` is `movie`, `tv`, `anime` or `anime_movie` and the URL is an MDBList list page or a TMDB-shaped JSON endpoint, as for `TRENDING_SOURCE_MOVIE`:
 
 ```
 TRENDING_SOURCE_CHOICES=movie|Trakt Trending|https://mdblist.com/lists/<user>/<movie-list>,tv|Trakt Trending|https://mdblist.com/lists/<user>/<show-list>
@@ -166,7 +166,7 @@ Default: (empty)
 
 ### `TRENDING_TOP10_URL`
 
-Where Choose Lists' **Streaming Top 10** charts are read: each streaming service's daily Top 10 in each of 119 countries, as FlixPatrol publishes them. The default is the fp-crawler project's daily copies on GitHub, the same files AIOMetadata's Top 10 catalogs read. If that copy goes away, point this at a mirror of the same files: `availability.json` (which services each country has) and one `<country>.json` per country (`united-kingdom.json`, `global.json`).
+Where the trending **Configure** dialog's **Streaming Top 10** charts are read: each streaming service's daily Top 10 in each of 119 countries, as FlixPatrol publishes them. The default is the fp-crawler project's daily copies on GitHub, the same files AIOMetadata's Top 10 catalogs read. If that copy goes away, point this at a mirror of the same files: `availability.json` (which services each country has) and one `<country>.json` per country (`united-kingdom.json`, `global.json`).
 
 While the charts can't be read, each Streaming Top 10 catalog keeps serving the last list it had rather than going empty. The picker's index of countries and services is stored in the cache volume, so it survives a restart. Turn the whole feature off by leaving `flixpatrol` out of `TRENDING_LIST_SOURCES`.
 

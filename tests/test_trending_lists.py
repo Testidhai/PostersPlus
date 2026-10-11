@@ -1,4 +1,4 @@
-"""Visitors pick their own trending lists (trending_list=, Choose Lists).
+"""Visitors pick their own trending lists (trending_list=, the trending Configure dialog).
 
 Each pick is its own stored list, shared by everyone who picked alike, and
 the operator's lists stay where they always were.  Only the menu can be

@@ -17,12 +17,12 @@
 
 ### Choose your trending lists
 
-- **Original Language** in Choose Lists keeps only titles first made in the
+- **Original Language** in the trending **Configure** dialog keeps only titles first made in the
   languages ticked on the Movies and Series lists: English, Global
   (non-English), Japanese, Korean, Spanish, French, German or Hindi
   (`trending_list=l:ko.ja`). Ranks are numbered without gaps after the cut,
   the catalog's name says which languages, and anime lists are unaffected.
-- **Streaming Top 10** in Choose Lists: pick a country and a service and
+- **Streaming Top 10** in the trending **Configure** dialog: pick a country and a service and
   add its daily Top 10 as a catalog, for 119 countries and 60+ services:
   Hulu, Peacock, Tubi, Starz, AMC+ and more in the US, every country's
   Netflix, Disney+, Prime Video, Apple TV+, HBO Max and Paramount+, a real
@@ -43,7 +43,7 @@
   after a list expires no longer waits 1-2 seconds or more for it to be
   rebuilt.
 
-- The Trending Catalogs Addon has a **Choose Lists** button. Tick any number
+- The Trending Catalogs Addon has a **Configure** button. Tick any number
   of sources for Movies, Series, Anime and Anime Movies, and each becomes a
   catalog of its own: **TMDB** Today and This Week, **IMDb** Most Popular,
   **Trakt** Trending (and Trending Digital for movies), **SIMKL** Today and
@@ -53,8 +53,8 @@
   needs a key. The addon numbers each catalog's posters by that catalog's
   own list, so every row it draws agrees. Posters drawn through your poster
   URL instead (AIOMetadata's poster pattern, Nuvio's override) can show only
-  one rank, so with two or more lists ticked for a type, a **Poster URL ranks
-  on** dropdown under it picks which of the ticked lists that is.
+  one rank, so with two or more lists ticked for a type, **Poster URL Ranks** at the
+  bottom picks which of the ticked lists that is.
   Untick everything to drop a type's catalog. **Not out at home yet** leaves
   unreleased titles off every list.
 - The pick rides in the poster URL (`trending_list=m:imdb.tmdb,h:1`, the

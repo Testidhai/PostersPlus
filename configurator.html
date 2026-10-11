@@ -1965,11 +1965,12 @@
     justify-content: flex-end;
   }
   .report-subject { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
-  /* Choose Lists: its button under the addon URL, and the modal's rows. */
+  /* Under the addon URL: Configure, then Copy at the right, one size. */
   .trending-lists-row {
-    display: flex; align-items: center; justify-content: flex-end; gap: 12px;
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
     margin-top: var(--gap-label);
   }
+  .trending-lists-row .btn-search { min-width: 120px; justify-content: center; }
   /* Sized to the screen: the box never outgrows it, and only .tl-scroll
      scrolls, without carrying the scroll on to the page behind. */
   .tl-box { max-width: 640px; max-height: 100%; min-height: 0; }
@@ -2485,15 +2486,17 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                   </label>
                 </div>
               </div>
-              <!-- A button, because on a phone a long press on a readonly
-                   input drags its caret along the URL instead of offering Copy. -->
               <div class="search-input-row">
                 <input type="text" id="trending-catalogs-url" readonly onclick="this.select()">
-                <button type="button" class="btn-search" id="trending-copy-btn" onclick="copyTrendingUrl()">Copy</button>
               </div>
-              <!-- Shown while the operator lets visitors pick (TRENDING_LIST_CHOICE). -->
-              <div class="trending-lists-row" id="trending-lists-row" style="display:none;">
-                <button type="button" class="btn-search" onclick="openTrendingListsModal()">Choose Lists</button>
+              <!-- Copy is a button because on a phone a long press on a readonly
+                   input drags its caret along the URL instead of offering Copy.
+                   Configure shows while the operator lets visitors pick
+                   (TRENDING_LIST_CHOICE). -->
+              <div class="trending-lists-row">
+                <button type="button" class="btn-search" id="trending-configure-btn" style="display:none;"
+                        onclick="openTrendingListsModal()">Configure</button>
+                <button type="button" class="btn-search" id="trending-copy-btn" onclick="copyTrendingUrl()">Copy</button>
               </div>
               <!-- The pick, as trending_list= (see trending_lists.py): a setting
                    like any other, so it is saved, shared and imported with them. -->
@@ -6531,7 +6534,7 @@ function updateTrendingCatalogsField() {
     `${domain}/trending/${ak ? encodeURIComponent(ak) + '/' : ''}${tl ? 'tl-' + tl + '/' : ''}`
     + `${cfg ? cfg + '/' : ''}manifest.json`;
   const caps = serverCaps.trending_lists;
-  document.getElementById('trending-lists-row').style.display = caps && caps.enabled ? '' : 'none';
+  document.getElementById('trending-configure-btn').style.display = caps && caps.enabled ? '' : 'none';
 }
 
 // ── Trending lists (trending_list=) ───────────────────────────────────────────

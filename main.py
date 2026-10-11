@@ -7802,7 +7802,7 @@ async def trending_addon(rest: str, request: Request):
 
 @app.get("/trending-top10")
 async def trending_top10(access_key: str = ""):
-    """Choose Lists' Streaming Top 10 picker: each country's services and the
+    """The trending Configure dialog's Streaming Top 10 picker: each country's services and the
     lists each can be a catalog of.  Apart from /server-caps, as it is read
     only when the picker opens."""
     if not _configurator_key_ok(access_key):
@@ -7845,7 +7845,7 @@ async def server_caps(request: Request, access_key: str = ""):
         "trending_fetch_timezone": _cfg.TRENDING_FETCH_TIMEZONE,
         "trending_next_refresh_hours": next_refresh_hours,
         "trending_catalogs_enabled": _cfg.TRENDING_CATALOGS_ENABLED,
-        # The lists a visitor may pick from (trending_list=, Choose Lists).
+        # The lists a visitor may pick from (trending_list=, the trending Configure dialog).
         "trending_lists":        trending_lists.caps(),
         "watchlist":             watchlist.status(),
         # Lets the configurator leave out any parameter already at its default.
