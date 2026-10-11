@@ -13,7 +13,10 @@ new one; tests/test_param_aliases.py checks every setting has one and none
 clash.  A "landscape_" setting's name is "_" and its portrait twin's.
 
 Identity and client placeholders (tmdb_id, imdb_id, type, stremio_id, the
-keys, shape...) keep their names: clients substitute them by name.
+keys, shape...) keep their names: clients substitute them by name.  A short
+name is at least two characters, an underscore only leading, so it can't be
+a generic name a client or proxy appends (t=, r=) or one of our own extras
+(the configurator preview's pp_ts).
 """
 from __future__ import annotations
 
@@ -70,7 +73,7 @@ ALIASES: dict[str, str] = {
     "imdb_rating_source": "irs",
     "label_font": "lf",
     "label_language": "lla",
-    "landscape_art": "_a",
+    "landscape_art": "_art",
     "landscape_art_source_anime": "_asa",
     "landscape_art_source_movie": "_asm",
     "landscape_art_source_tv": "_ast",
@@ -98,7 +101,7 @@ ALIASES: dict[str, str] = {
     "landscape_bottom_gradient_opacity": "_bgo",
     "landscape_color_link": "_cl",
     "landscape_graphic_badges": "_gb",
-    "landscape_greyscale": "_g",
+    "landscape_greyscale": "_gs",
     "landscape_hide_genre": "_hg",
     "landscape_hide_rating": "_hr",
     "landscape_hide_year": "_hy",
@@ -112,8 +115,8 @@ ALIASES: dict[str, str] = {
     "landscape_rating_separator": "_rs",
     "landscape_sash_mode": "_sm",
     "landscape_score_out_of_10": "_soo10",
-    "landscape_separator": "_s",
-    "landscape_textless": "_t",
+    "landscape_separator": "_sep",
+    "landscape_textless": "_tx",
     "landscape_top_gradient": "_tg",
     "landscape_top_gradient_height": "_tgh",
     "landscape_top_gradient_opacity": "_tgo",
@@ -153,7 +156,7 @@ ALIASES: dict[str, str] = {
     "minimalist_score_out_of_10": "msoo10",
     "minimalist_separator": "ms",
     "movie_weights": "mw",
-    "muted": "m",
+    "muted": "mu",
     "notch_vignette_color": "nvc",
     "numeric_score_font_size_ratio": "nsfsr",
     "numeric_score_y_offset": "nsyo",
@@ -175,7 +178,7 @@ ALIASES: dict[str, str] = {
     "rating_text_color": "rtc",
     "release_status_cinema_only": "rsco",
     "release_status_dates": "rsd",
-    "resolution": "r",
+    "resolution": "res",
     "sash_badge": "sb",
     "sash_badge_font_ratio": "sbfr",
     "sash_badge_frost_opacity": "sbfo",
@@ -207,7 +210,7 @@ ALIASES: dict[str, str] = {
     "score_out_of_10": "soo10",
     "show_award_sash": "sas",
     "show_quality_badges": "sqb",
-    "textless": "t",
+    "textless": "tx",
     "tmdb_rating_source": "trs",
     "top_gradient": "tg",
     "top_gradient_height": "tgh",

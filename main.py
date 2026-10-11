@@ -7390,7 +7390,9 @@ class _ParamAliasMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and scope.get("path") == "/poster" and scope.get("query_string"):
+        # endswith: under a root_path the path carries the prefix.
+        if (scope["type"] == "http" and scope.get("path", "").endswith("/poster")
+                and scope.get("query_string")):
             pairs = parse_qsl(scope["query_string"].decode("utf-8", "replace"), keep_blank_values=True)
             if any(k in param_aliases.LONG for k, _v in pairs):
                 scope = {**scope, "query_string": urlencode(param_aliases.expand(pairs)).encode("ascii")}

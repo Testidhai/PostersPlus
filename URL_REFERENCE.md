@@ -117,7 +117,7 @@ The trending addon takes the same value as a path segment, `/trending/[<access k
 
 ### Short names
 
-Every setting has a short name, and the configurator writes those: `vpcb=e0b84f` is `vignette_poster_color_bottom=e0b84f`, `_g=1` is `landscape_greyscale=true` (a `landscape_` setting is `_` and its portrait twin's short name), and on/off settings are written `1`/`0`. It keeps a much-customised URL well inside the ~2000 characters some metadata clients cut URLs at, about 60% shorter than spelled out. The server reads either spelling, in any mix, as the same poster and the same cached copy, so URLs written before short names keep working. Where a URL has both spellings of one setting, the long one wins. Ids, keys and client placeholders (`tmdb_id`, `imdb_id`, `type`, `stremio_id`, `access_key`, `shape`...) keep their names.
+Every setting has a short name, and the configurator writes those: `vpcb=e0b84f` is `vignette_poster_color_bottom=e0b84f`, `_gs=1` is `landscape_greyscale=true` (a `landscape_` setting is `_` and its portrait twin's short name), and on/off settings are written `1`/`0`. It keeps a much-customised URL well inside the ~2000 characters some metadata clients cut URLs at, about 60% shorter than spelled out. The server reads either spelling, in any mix, as the same poster and the same cached copy, so URLs written before short names keep working. Where a URL has both spellings of one setting, the long one wins. Ids, keys and client placeholders (`tmdb_id`, `imdb_id`, `type`, `stremio_id`, `access_key`, `shape`...) keep their names.
 
 <details><summary>Every short name</summary>
 
@@ -173,7 +173,7 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `imdb_rating_source` | `irs` |
 | `label_font` | `lf` |
 | `label_language` | `lla` |
-| `landscape_art` | `_a` |
+| `landscape_art` | `_art` |
 | `landscape_art_source_anime` | `_asa` |
 | `landscape_art_source_movie` | `_asm` |
 | `landscape_art_source_tv` | `_ast` |
@@ -201,7 +201,7 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `landscape_bottom_gradient_opacity` | `_bgo` |
 | `landscape_color_link` | `_cl` |
 | `landscape_graphic_badges` | `_gb` |
-| `landscape_greyscale` | `_g` |
+| `landscape_greyscale` | `_gs` |
 | `landscape_hide_genre` | `_hg` |
 | `landscape_hide_rating` | `_hr` |
 | `landscape_hide_year` | `_hy` |
@@ -215,8 +215,8 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `landscape_rating_separator` | `_rs` |
 | `landscape_sash_mode` | `_sm` |
 | `landscape_score_out_of_10` | `_soo10` |
-| `landscape_separator` | `_s` |
-| `landscape_textless` | `_t` |
+| `landscape_separator` | `_sep` |
+| `landscape_textless` | `_tx` |
 | `landscape_top_gradient` | `_tg` |
 | `landscape_top_gradient_height` | `_tgh` |
 | `landscape_top_gradient_opacity` | `_tgo` |
@@ -256,7 +256,7 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `minimalist_score_out_of_10` | `msoo10` |
 | `minimalist_separator` | `ms` |
 | `movie_weights` | `mw` |
-| `muted` | `m` |
+| `muted` | `mu` |
 | `notch_vignette_color` | `nvc` |
 | `numeric_score_font_size_ratio` | `nsfsr` |
 | `numeric_score_y_offset` | `nsyo` |
@@ -278,7 +278,7 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `rating_text_color` | `rtc` |
 | `release_status_cinema_only` | `rsco` |
 | `release_status_dates` | `rsd` |
-| `resolution` | `r` |
+| `resolution` | `res` |
 | `sash_badge` | `sb` |
 | `sash_badge_font_ratio` | `sbfr` |
 | `sash_badge_frost_opacity` | `sbfo` |
@@ -310,7 +310,7 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `score_out_of_10` | `soo10` |
 | `show_award_sash` | `sas` |
 | `show_quality_badges` | `sqb` |
-| `textless` | `t` |
+| `textless` | `tx` |
 | `tmdb_rating_source` | `trs` |
 | `top_gradient` | `tg` |
 | `top_gradient_height` | `tgh` |

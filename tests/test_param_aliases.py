@@ -38,7 +38,9 @@ class TableTests(unittest.TestCase):
         longs = set(param_aliases.ALIASES) | IDENTITY
         self.assertEqual(sorted(set(shorts) & longs), [])
         for short in shorts:
-            self.assertRegex(short, r"^[a-z0-9_]{1,8}$")
+            # Two characters at least, an underscore only leading: never a
+            # generic name a client appends (t=, r=) nor the preview's pp_ts.
+            self.assertRegex(short, r"^_?[a-z0-9]{2,8}$")
         self.assertFalse(set(param_aliases.ALIASES) & IDENTITY)
 
     def test_a_landscape_twin_is_its_portrait_name_with_an_underscore(self):
@@ -58,7 +60,7 @@ class TableTests(unittest.TestCase):
 class ReadingTests(unittest.TestCase):
     def test_expand_spells_out_and_the_long_name_wins(self):
         self.assertEqual(
-            param_aliases.expand([("vpcb", "e0b84f"), ("r", "780"), ("resolution", "1000"), ("tmdb_id", "1")]),
+            param_aliases.expand([("vpcb", "e0b84f"), ("res", "780"), ("resolution", "1000"), ("tmdb_id", "1")]),
             [("vignette_poster_color_bottom", "e0b84f"), ("resolution", "1000"), ("tmdb_id", "1")])
 
     def _through_middleware(self, path, query):
@@ -72,11 +74,13 @@ class ReadingTests(unittest.TestCase):
         return dict(parse_qsl(seen["query_string"].decode(), keep_blank_values=True))
 
     def test_a_poster_request_reaches_the_endpoint_spelled_out(self):
-        q = self._through_middleware("/poster", "tmdb_id=603&type=movie&bdm=6&_g=1&tl=m%3Aimdb&imdb_id=%7Bimdb_id%7D")
+        q = self._through_middleware("/poster", "tmdb_id=603&type=movie&bdm=6&_gs=1&tl=m%3Aimdb&imdb_id=%7Bimdb_id%7D")
         self.assertEqual(q, {"tmdb_id": "603", "type": "movie", "badge_display_mode": "6",
                              "landscape_greyscale": "1", "trending_list": "m:imdb", "imdb_id": "{imdb_id}"})
         # Other endpoints' parameters are not settings.
-        self.assertEqual(self._through_middleware("/search", "r=1"), {"r": "1"})
+        self.assertEqual(self._through_middleware("/search", "res=1"), {"res": "1"})
+        # Under a root_path prefix too.
+        self.assertEqual(self._through_middleware("/pp/poster", "bdm=6"), {"badge_display_mode": "6"})
 
     def test_the_addons_settings_segment_and_its_poster_urls(self):
         import base64
@@ -101,21 +105,47 @@ class OffIsSentTests(unittest.TestCase):
         html = (ROOT / "configurator.html").read_text(encoding="utf-8")
         start = html.index("function buildBaseParams")
         body = html[start:html.index("\n}\n", start)]
+        # emitShared writes each name twice: plain for portrait and
+        # "landscape_"-prefixed for landscape, each against its own defaults.
+        shared_at = body.index("function emitShared")
+        shared_end = body.index("\n  }\n", shared_at)
         portrait, landscape = main._render_param_defaults(), main._render_param_defaults("landscape")
-        default = lambda n: (landscape if n.startswith("landscape_") else portrait).get(n, portrait.get(n))
+
+        def defaults_for(name, pos):
+            if shared_at <= pos < shared_end:
+                return [portrait.get(name), landscape.get(f"landscape_{name}", landscape.get(name))]
+            return [(landscape if name.startswith("landscape_") else portrait).get(name, portrait.get(name))]
+
         problems, checked = [], 0
         for m in re.finditer(r"if \(([^\n]*?)\)\s*(?:params\.)?set\('([a-z0-9_]+)',\s*'true'\)", body):
             checked += 1
-            if default(m.group(2)) is True:
+            if any(d is True for d in defaults_for(m.group(2), m.start())):
                 problems.append(f"{m.group(2)}: sent only when on, server default on")
-        for m in re.finditer(r"if \(\(?([^\n]*?)\)?\s*!==\s*'([^']*)'\)\s*(?:params\.)?set\('([a-z0-9_]+)'", body):
+        for m in re.finditer(r"if \(\(?([^\n]*?)\)?\s*!==\s*('([^']*)'|-?\d+(?:\.\d+)?)\)\s*(?:params\.)?set\('([a-z0-9_]+)'", body):
             checked += 1
-            name, assumed = m.group(3), m.group(2)
-            d = default(name)
-            if d is not None and str(d).lower() != assumed.lower():
-                problems.append(f"{name}: left out when {assumed!r}, server default {d!r}")
-        self.assertGreater(checked, 20)
+            name, assumed = m.group(4), (m.group(3) if m.group(3) is not None else m.group(2))
+            for d in defaults_for(name, m.start()):
+                if d is None:
+                    continue
+                same = (float(d) == float(assumed)) if isinstance(d, (int, float)) and not isinstance(d, bool) \
+                    else str(d).lower() == assumed.lower()
+                if not same:
+                    problems.append(f"{name}: left out when {assumed!r}, server default {d!r}")
+        self.assertGreater(checked, 25)
         self.assertEqual(problems, [])
+
+
+class PresetTests(unittest.TestCase):
+    def test_a_copied_url_saves_as_an_operator_preset_by_long_name(self):
+        import presets
+        query, shape = presets.clean_params(
+            "https://x/poster?tmdb_id={tmdb_id}&shape=landscape&_gs=1&_ts=hide&bdm=6&pp_ts=1728671234567")
+        self.assertEqual(shape, "landscape")
+        self.assertEqual(dict(parse_qsl(query)), {"shape": "landscape", "landscape_greyscale": "1",
+                                                  "landscape_trending_sash": "hide", "badge_display_mode": "6"})
+        # The old preview cache-buster is still dropped, not read as a setting.
+        query, _ = presets.clean_params("https://x/poster?bdm=6&_ts=1728671234567")
+        self.assertEqual(query, "badge_display_mode=6")
 
 
 class DocTests(unittest.TestCase):

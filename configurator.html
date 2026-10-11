@@ -8466,7 +8466,8 @@ async function loadPreview() {
     frame.innerHTML = `<div class="preview-empty"><div class="preview-spinner"></div>Fetching poster…</div>`;
   }
   setStatus('fetching poster…', 'info');
-  const previewUrl = buildPreviewUrl() + '&_ts=' + Date.now();
+  // pp_ts: a name no setting's short name can be (param_aliases.py).
+  const previewUrl = buildPreviewUrl() + '&pp_ts=' + Date.now();
   const existingImg = frame.querySelector('.preview-poster');
   if (existingImg) {
     existingImg.style.opacity = '0.3';
@@ -9539,12 +9540,18 @@ const PRESETS = [
 const USER_PRESETS_KEY = 'postersplus_user_presets';
 const USER_PRESETS_MAX = 30;
 const PRESET_TAB_KEY   = 'postersplus_preset_tab';
-const _PRESET_DROPPED  = new Set(['tmdb_id', 'imdb_id', 'type', 'stremio_id', 'anilist_id', 'kitsu_id', 'mal_id', '_ts', 'share']);
+const _PRESET_DROPPED  = new Set(['tmdb_id', 'imdb_id', 'type', 'stremio_id', 'anilist_id', 'kitsu_id', 'mal_id', 'pp_ts', 'share']);
 let _presetTab = null;
 let _presetSaving = false;
 
 function _presetParams(raw) {
-  const p = new URLSearchParams(String(raw || ''));
+  const given = new URLSearchParams(String(raw || ''));
+  // The preview's cache-buster from before short names: "_ts" is now
+  // landscape_trending_sash's short name.
+  if (/^\d{10,}$/.test(given.get('_ts') || '')) given.delete('_ts');
+  // By long name, so the checks below see a copied (short-name) URL's
+  // settings, landscape "_" ones included, as they always did.
+  const p = expandParams(given);
   for (const k of [...p.keys()]) {
     const n = k.toLowerCase();
     if (_PRESET_DROPPED.has(n) || _CORE_PARAMS.includes(n) || /key|token|secret|password|auth/.test(n)

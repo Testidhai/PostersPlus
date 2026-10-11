@@ -30,6 +30,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 from PIL import Image, ImageOps
 
 import config as _cfg
+import param_aliases
 from cache import get_app_state, set_app_state
 from reports import clean_text
 
@@ -52,7 +53,7 @@ _PARAM_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 # Who the poster is for, not how it looks — and never anything secret.
 _DROPPED_PARAMS = {"tmdb_id", "imdb_id", "type", "stremio_id", "anilist_id", "kitsu_id", "mal_id",
                    "access_key", "tmdb_key", "mdblist_key", "fanart_key", "tvdb_key",
-                   "simkl_key", "api_key", "key", "token", "_ts"}
+                   "simkl_key", "api_key", "key", "token", "pp_ts"}
 _SECRET_WORDS = ("key", "token", "secret", "password", "auth")
 _write_lock = threading.Lock()
 
@@ -68,7 +69,13 @@ def clean_params(url_or_query: str) -> tuple[str, str]:
     pairs: list[tuple[str, str]] = []
     seen: set[str] = set()
     shape = "portrait"
-    for name, value in parse_qsl(query, keep_blank_values=True):
+    given = [(k, v) for k, v in parse_qsl(query, keep_blank_values=True)
+             # The configurator preview's old cache-buster: "_ts" is now
+             # landscape_trending_sash's short name.
+             if not (k == "_ts" and v.isdigit() and len(v) >= 10)]
+    # By long name, so a copied (short-name) URL's settings pass the checks
+    # below, landscape "_" ones included.
+    for name, value in param_aliases.expand(given):
         name = name.strip().lower()
         if (name in seen or name in _DROPPED_PARAMS or not _PARAM_NAME_RE.match(name)
                 or any(w in name for w in _SECRET_WORDS)):
