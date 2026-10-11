@@ -1970,10 +1970,15 @@
     display: flex; align-items: center; justify-content: flex-end; gap: 12px;
     margin-top: var(--gap-label);
   }
-  .trending-lists-fields {
-    display: flex; flex-direction: column; gap: 14px;
-    max-height: 58vh; overflow-y: auto; padding-right: 4px;
+  /* Sized to the screen: the box never outgrows it, and only .tl-scroll
+     scrolls, without carrying the scroll on to the page behind. */
+  .tl-box { max-width: 640px; max-height: 100%; min-height: 0; }
+  .tl-scroll {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    display: flex; flex-direction: column; gap: 18px; padding-right: 4px;
   }
+  .trending-lists-fields { display: flex; flex-direction: column; gap: 14px; }
   .trending-lists-fields .field { margin: 0; }
   .tl-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
   .tl-opt {
@@ -2208,6 +2213,9 @@
     }
     /* Import modal — top-biased so keyboard doesn't obscure it */
     .import-modal { align-items: flex-start; padding: 14vh 24px 24px; }
+    /* Trending lists is tall: the whole screen, its middle scrolling. */
+    #trending-lists-modal { align-items: stretch; padding: 12px; }
+    #trending-lists-modal .tl-box { padding: 16px; gap: 14px; }
     /* Import modal buttons go full-width on mobile */
     .import-modal-btns { flex-direction: column-reverse; }
     .import-modal-btns .btn { flex: 1 1 100%; min-height: 44px; justify-content: center; font-size: 11px; letter-spacing: calc(0.14em * var(--track)); }
@@ -4356,12 +4364,13 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
   </div>
 </div>
 <div class="import-modal" id="trending-lists-modal" onclick="if(event.target===this)closeTrendingListsModal()">
-  <div class="import-modal-box" style="max-width:640px;">
-    <div>
-      <div class="import-modal-title">Trending lists</div>
-      <div class="report-subject">Each list you tick is a catalog of its own in the Trending addon, and the addon numbers each row's posters by that row's own list. Where your poster URL draws them instead (AIOMetadata's poster pattern, Nuvio's override), one poster can only show one rank: with two or more lists ticked, pick it with <b>Poster URL</b>. Copy the addon URL and your poster URL again after changing these.</div>
+  <div class="import-modal-box tl-box">
+    <div class="import-modal-title">Trending lists</div>
+    <!-- Only this part scrolls: the title and the buttons stay in view. -->
+    <div class="tl-scroll">
+      <div class="report-subject">Each list you tick is a catalog of its own in the Trending addon, and the addon numbers each row's posters by that row's own list. Where your poster URL draws them instead (AIOMetadata's poster pattern, Nuvio's override), one poster can only show one rank: with two or more lists ticked for a type, pick it under <b>Poster URL Ranks</b> at the bottom. Copy the addon URL and your poster URL again after changing these.</div>
+      <div class="trending-lists-fields" id="trending-lists-fields"></div>
     </div>
-    <div class="trending-lists-fields" id="trending-lists-fields"></div>
     <div class="report-msg err" id="trending-lists-msg" hidden></div>
     <div class="import-modal-btns">
       <button class="btn btn-reset" onclick="resetTrendingListsModal()">Instance Defaults</button>
@@ -6758,10 +6767,18 @@ function openTrendingListsModal() {
   const modal = document.getElementById('trending-lists-modal');
   if (modal.classList.contains('open')) return;
   modal.classList.add('open');
+  modal.querySelector('.tl-scroll').scrollTop = 0;
+  // Hold the page still behind it, unless something else already does.
+  _tlLockedScroll = document.body.style.position !== 'fixed';
+  if (_tlLockedScroll) _lockScroll();
   _pushModalState('trending-lists-modal');
 }
+let _tlLockedScroll = false;
 function closeTrendingListsModal() {
-  document.getElementById('trending-lists-modal').classList.remove('open');
+  const modal = document.getElementById('trending-lists-modal');
+  if (!modal.classList.contains('open')) return;
+  modal.classList.remove('open');
+  if (_tlLockedScroll) { _tlLockedScroll = false; _unlockScroll(); }
   _popModalState('trending-lists-modal');
 }
 function resetTrendingListsModal() {
