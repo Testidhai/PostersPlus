@@ -818,6 +818,12 @@ async def fetch_poster_metadata(
         "backdrop_langs": sorted({
             key for b in _text_backdrops for key in _image_language_keys(b)
         }),
+        # Landscape's random pick (landscape_poster_pick=random): the top
+        # neutral backdrops, and the top text-bearing ones, by rating.
+        "backdrops": [b["file_path"] for b in sorted(
+            backdrop_candidates, key=lambda b: -(b.get("vote_average") or 0))[:POSTER_POOL_SIZE]],
+        "text_backdrops": [b["file_path"] for b in sorted(
+            _text_backdrops, key=lambda b: -(b.get("vote_average") or 0))[:POSTER_POOL_SIZE]],
     }
 
     # A show whose Horror couldn't be told (Cinemeta down) isn't cached: the

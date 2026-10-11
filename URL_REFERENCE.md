@@ -84,6 +84,8 @@ Optional parameters control the landscape-specific choices:
 - `landscape_separator=bullet|pip` (default `bullet`) is the separator between the line's other fields, genre and year, as `minimalist_separator` is on a portrait: `pip` draws the bar (`Genre | Year • 87`). The one in front of the score stays `landscape_rating_separator`'s.
 - `landscape_info_center=true` centres the whole `Genre • Year • Score` line, rating badges included, on the poster in its row (the row `landscape_info_pos` gives it, the bottom one under `auto`), as a portrait's Minimalist `minimalist_center` centres it under the logo. A side logo in the bottom row that would meet it stands above the line's row instead (a narrower one stays on the baseline), where `landscape_info_pos=bottom_center` moves the line into the middle of the room beside the logo; a top-row line pushes aside from a top logo only as far as it must. Off by default.
 - `landscape_art_source_movie`, `landscape_art_source_tv` and `landscape_art_source_anime` (each `tmdb|tvdb|fanart|cinemeta`, default `tmdb`) pick the backdrop source for films, series and anime (Japanese animation, or a title requested by an anime id) separately; the older `landscape_art_source` sets all three, and a per-type value beats it. `cinemeta` is Metahub's background, which never carries the title, so it is read with `landscape_art=textless` only (as `tmdb` with `original`) and needs `CINEMETA_ENABLED`. `tvdb` takes the backdrop from TVDB: with `landscape_art=textless` its best background with no language (TVDB's clean art), with `original` its best background in the request's language order, passing over ones TVDB marks as carrying no text. `fanart` takes fanart.tv's most-liked background (clean art) for textless, and for original its most-liked thumb (16:9 key art with the title on) in the request's language order; `fanart_anime` (on the older single parameter) does that for anime only and keeps TMDB's backdrop for everything else. Titles the source has nothing for keep TMDB's backdrop. `tvdb` is offered when the operator turns on `TVDB_POSTER_SOURCE`, the fanart values with `FANART_POSTERS`, and each is read as `tmdb` otherwise.
+- `landscape_anime_provider_art` (`provider|kitsu`, default `provider`) is landscape's Anime Provider Source, for a title requested by an AniList, Kitsu or MAL id that has a TMDB counterpart: `provider` keeps the TMDB backdrop (by `landscape_art_source_anime`), `kitsu` uses the entry's own Kitsu cover (an AniList entry's through the id mapping) when a 16:9 cut of it needs little upscaling and it carries no lettering, with the logo on top, and otherwise keeps the backdrop. The portrait `anime_provider_art` isn't read for landscape.
+- `landscape_poster_pick` (`top|random`, default `top`) is landscape's pick: `random` takes one of the source's top five backdrops (TMDB's, TVDB's or fanart.tv's), fixed until the poster re-renders. Needs the operator's `RANDOM_POSTERS`; the portrait `poster_pick` isn't read for landscape.
 - `landscape_poster_crop=true` cuts the poster to 16:9 for a title with no backdrop from any source, with the logo on top, instead of drawing the genre canvas. The cut takes the poster's full width and is centred on its faces where it has any, else on its upper part, where the title usually isn't. For an anime title it is preferred to the provider's banner, a 16:9 cut of which is a close-up. Off by default.
 - `landscape_greyscale=true` greyscales the art while a film is still in cinemas or not out yet, as `cinema_greyscale` does on a portrait, but without needing the release-status sash. The bands go black, the colour they keep on a greyscaled portrait. `cinema_greyscale_skip_if_available` applies, and so does `greyscale_no_quality` on a landscape that shows quality.
 - `landscape_badge_style=glass|black|silver|gold` (default `glass`, the frosted pill) draws the info badge in one of the portrait notch's dark styles: a near-black pill, or a dark one with a silver or gold rim. `landscape_badge_text_color=RRGGBB` sets the dark pills' label colour.
@@ -173,6 +175,7 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `imdb_rating_source` | `irs` |
 | `label_font` | `lf` |
 | `label_language` | `lla` |
+| `landscape_anime_provider_art` | `_apa` |
 | `landscape_art` | `_art` |
 | `landscape_art_source_anime` | `_asa` |
 | `landscape_art_source_movie` | `_asm` |
@@ -211,6 +214,7 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `landscape_logo_pos` | `_lp` |
 | `landscape_logo_scale` | `_ls` |
 | `landscape_poster_crop` | `_pc` |
+| `landscape_poster_pick` | `_pp` |
 | `landscape_rating_badges` | `_rb` |
 | `landscape_rating_separator` | `_rs` |
 | `landscape_sash_mode` | `_sm` |

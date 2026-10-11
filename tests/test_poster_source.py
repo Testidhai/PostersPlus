@@ -78,6 +78,30 @@ def _poster(lang, likes, n):
     return {"lang": lang, "likes": str(likes), "url": f"https://assets.fanart.tv/{n}.jpg"}
 
 
+class LandscapeProviderAndPickTests(unittest.TestCase):
+    """Landscape's own Anime Provider Source and pick."""
+
+    def _cfg(self, random_on=True, **params):
+        with mock.patch.multiple(main._cfg, RANDOM_POSTERS=random_on):
+            return main.build_request_config(params)
+
+    def test_landscape_keeps_its_own(self):
+        cfg = self._cfg(shape="landscape", landscape_anime_provider_art="kitsu", landscape_poster_pick="random")
+        self.assertEqual((cfg.landscape_anime_provider_art, cfg.landscape_poster_pick), ("kitsu", "random"))
+        # Random needs the operator's switch; only Kitsu is offered.
+        cfg = self._cfg(False, shape="landscape", landscape_anime_provider_art="tmdb", landscape_poster_pick="random")
+        self.assertEqual((cfg.landscape_anime_provider_art, cfg.landscape_poster_pick), ("provider", "top"))
+
+    def test_portrait_ignores_them_and_defaults_keep_their_cache_key(self):
+        cfg = self._cfg(landscape_anime_provider_art="kitsu", landscape_poster_pick="random")
+        self.assertEqual((cfg.landscape_anime_provider_art, cfg.landscape_poster_pick), ("provider", "top"))
+        sig = main._render_config_signature(self._cfg(shape="landscape"))
+        self.assertNotIn("landscape_anime_provider_art", sig)
+        self.assertNotIn("landscape_poster_pick", sig)
+        self.assertNotEqual(sig, main._render_config_signature(
+            self._cfg(shape="landscape", landscape_poster_pick="random")))
+
+
 class FanartPoolTests(unittest.TestCase):
     def setUp(self):
         self.store = {}
@@ -123,6 +147,20 @@ class FanartPoolTests(unittest.TestCase):
     def test_transient_errors_are_not_cached(self):
         self.assertIsNone(self._url(_Client(_Resp(503))))
         self.assertEqual(self.store, {})
+
+
+class FanartBackgroundPickTests(unittest.TestCase):
+    setUp = FanartPoolTests.setUp
+
+    def test_random_background_stays_within_the_top_five(self):
+        client = _Client(_Resp(200, {"moviebackground": [
+            _poster("", 10 - n, f"b{n}") for n in range(8)
+        ]}))
+        url = lambda **kw: asyncio.run(fanart.fanart_background_url(
+            client, media_type="movie", tmdb_id="550", **kw))
+        self.assertEqual(url(), "https://assets.fanart.tv/b0.jpg")
+        self.assertEqual({url(random_top=True) for _ in range(60)},
+                         {f"https://assets.fanart.tv/b{n}.jpg" for n in range(5)})
 
 
 class TmdbTextlessRankTests(unittest.TestCase):

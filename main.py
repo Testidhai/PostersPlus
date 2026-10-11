@@ -2108,6 +2108,16 @@ class RequestConfig:
     # "top" (default) or "random": one of the source's top five candidates,
     # re-rolled each time the poster renders.  Needs RANDOM_POSTERS.
     poster_pick: str = "top"
+    # Landscape's own two (the parser keeps the portrait ones above off a
+    # landscape render, which draws backdrops):
+    #   landscape_anime_provider_art  "provider" (default) the TMDB backdrop by
+    #       the landscape Anime Source, as ever; "kitsu" the entry's Kitsu cover
+    #       where it cuts to 16:9 clean (anime_season.kitsu_cover), for a title
+    #       requested by an anime id with a TMDB counterpart.
+    #   landscape_poster_pick  "top" or "random" of the source's top five
+    #       backdrops.  Needs RANDOM_POSTERS.
+    landscape_anime_provider_art: str = "provider"
+    landscape_poster_pick: str = "top"
     sash_priority: list[str] = field(default_factory=lambda: list(_cfg.SASH_PRIORITY))
     muted: bool = False
     textless: bool = False
@@ -2803,6 +2813,8 @@ _SIGNATURE_OMIT_AT_DEFAULT = {"poster_width": 500, "rating_badges": "", "rating_
                               "landscape_poster_crop": False,
                               "original_labels": "",
                               "anime_provider_art": "provider",
+                              "landscape_anime_provider_art": "provider",
+                              "landscape_poster_pick": "top",
                               **{name: RequestConfig.__dataclass_fields__[name].default
                                  for name in _LANDSCAPE_BADGE_TUNING}}
 
@@ -3269,6 +3281,10 @@ def build_request_config(params: dict) -> RequestConfig:
         cfg.poster_source_movie = cfg.poster_source_tv = cfg.poster_source_anime = "tmdb"
         cfg.anime_provider_art = "provider"
         cfg.poster_pick = "top"
+        if (params.get("landscape_anime_provider_art") or "").strip().lower() == "kitsu":
+            cfg.landscape_anime_provider_art = "kitsu"
+        if (params.get("landscape_poster_pick") or "").strip().lower() == "random" and _cfg.RANDOM_POSTERS:
+            cfg.landscape_poster_pick = "random"
         _parse_per_type_source(
             cfg, params, "landscape_art_source",
             _offered_art_sources(cinemeta_has_art=cfg.landscape_art != "original"))
@@ -10080,6 +10096,11 @@ async def get_poster(
             rcfg.anime_provider_art in ("tmdb", "fanart", "tvdb") and type != "movie"
             and not anime_ids.is_series_start(anime_namespace, anime_id)):
         rcfg.anime_provider_art = "provider"
+    # The landscape Kitsu cover likewise, and only where there is a TMDB
+    # backdrop it replaces: an entry TMDB doesn't have already falls back to
+    # its provider's own wide art.
+    if not is_anime or not has_tmdb_id:
+        rcfg.landscape_anime_provider_art = "provider"
 
     # Operator force-refresh: ?nocache=1 skips the composite cache READ so a fresh
     # render is produced (and re-cached), letting an operator invalidate a single
@@ -10576,6 +10597,8 @@ async def get_poster(
                     tmdb_data = {
                         **tmdb_data,
                         "text_backdrop_path": _logo_meta[7].get("text_backdrop_path"),
+                        # Its backdrop pools too, for landscape_poster_pick.
+                        "poster_pools": _logo_meta[7].get("poster_pools"),
                     }
                 # The providers carry no IMDb id; TMDB's, when the request came
                 # without one, is what Metahub's background, MDBList's ratings
@@ -11224,6 +11247,16 @@ async def get_poster(
                 # already in the art; don't double it with our logo.
                 is_textless = bool(backdrop_path)
             _use_backdrop = False
+            _ls_random = rcfg.landscape_poster_pick == "random"
+            if _ls_random and _ls_path is not None:
+                # One of TMDB's top five of the kind picked, neutral or
+                # text-bearing.  Rows cached before the pools keep the top
+                # one until their weekly refresh.
+                _bd_pool = (tmdb_data.get("poster_pools") or {}).get(
+                    "backdrops" if _ls_path == backdrop_path else "text_backdrops") or []
+                if len(_bd_pool) > 1:
+                    _ls_path = random.choice(_bd_pool)
+                    logger.info(f"Random landscape backdrop for {tmdb_id}: {_ls_path}")
             _ls_source = _source_for(rcfg, "landscape_art_source", type, _is_anime_title)
             # TVDB's background instead, when asked for and it has one: the
             # untagged ones are clean art, the tagged ones carry the title.
@@ -11232,6 +11265,7 @@ async def get_poster(
                     client, media_type=type, tmdb_id=tmdb_id if has_tmdb_id else None,
                     imdb_id=effective_imdb_id, kind="backgrounds",
                     languages=_poster_language_order if rcfg.landscape_art == "original" else None,
+                    random_top=_ls_random,
                 )
                 if _tv_bg:
                     _ls_path    = _tv_bg
@@ -11243,6 +11277,7 @@ async def get_poster(
                 _fa_bg = await fanart_background_url(
                     client, media_type=type, tmdb_id=tmdb_id, imdb_id=effective_imdb_id,
                     languages=_poster_language_order if rcfg.landscape_art == "original" else None,
+                    random_top=_ls_random,
                 )
                 if _fa_bg:
                     _ls_path    = _fa_bg
@@ -11273,6 +11308,17 @@ async def get_poster(
                         # still): our logo goes on, in either art mode.
                         is_textless = True
                         logger.info(f"Season landscape art for {anime_key}: {_season_bg}")
+            # The entry's own Kitsu cover in place of the TMDB backdrop
+            # (landscape_anime_provider_art), when it cuts to 16:9 clean; a
+            # later season's is the one season art above already chose.
+            if (rcfg.landscape_anime_provider_art == "kitsu" and anime_namespace in anime.NAMESPACES
+                    and anime_id is not None and has_tmdb_id and not use_cinemeta):
+                _kitsu_bg = await anime_season.kitsu_cover(
+                    client, namespace=anime_namespace, anime_id=anime_id, tmdb_id=tmdb_id)
+                if _kitsu_bg:
+                    _ls_path    = _kitsu_bg
+                    is_textless = True
+                    logger.info(f"Kitsu cover landscape art for {anime_key}: {_kitsu_bg}")
             # The operator's chosen landscape art (dashboard → Artwork), by the
             # same language walk as original-art posters.  Rows cached before
             # the text-backdrop languages were kept don't know them, so there

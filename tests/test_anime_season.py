@@ -203,3 +203,31 @@ class CoverTextTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KitsuCoverTests(SeasonArtTests):
+    """landscape_anime_provider_art=kitsu: the entry's own cover, by the same
+    checks as a season's, and no episode still in its place."""
+
+    def _cover(self, namespace="kitsu", anime_id=45857):
+        async def go():
+            async with self._client() as client:
+                return await asn.kitsu_cover(client, namespace=namespace, anime_id=anime_id,
+                                             tmdb_id="95479")
+        return asyncio.run(go())
+
+    def test_a_clean_cover_is_the_art(self):
+        self.assertEqual(self._cover(), COVER)
+        import tmdb
+        self.assertIn(tmdb.landscape_image_cache_key("95479", COVER), self.stored)
+
+    def test_lettering_keeps_the_backdrop(self):
+        self.has_text = True
+        self.seasons = {1: [{"still_path": "/still.jpg"}]}
+        self.assertIsNone(self._cover())
+
+    def test_an_anilist_request_borrows_it_and_it_is_cached(self):
+        self.assertEqual(self._cover(namespace="anilist", anime_id=145064), COVER)
+        calls = len(self.calls)
+        self.assertEqual(self._cover(namespace="anilist", anime_id=145064), COVER)
+        self.assertEqual(len(self.calls), calls)

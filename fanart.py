@@ -144,8 +144,10 @@ async def fanart_background_url(
     tmdb_id: str,
     imdb_id: str | None = None,
     languages: list[str] | None = None,
+    random_top: bool = False,
 ) -> str | None:
     """Landscape art from fanart.tv (landscape_art_source=fanart), or None.
+    *random_top* picks one of the top five instead (landscape_poster_pick).
 
     Without *languages*: the most-liked background — fanart.tv's backgrounds
     are clean 1920x1080 art, untagged.  With *languages* (landscape original
@@ -172,7 +174,9 @@ async def fanart_background_url(
     else:
         langs = pools.get("langs") or {}
         urls = next((langs[code] for code in languages if langs.get(code)), [])
-    return urls[0] if urls else None
+    if not urls:
+        return None
+    return random.choice(urls[:_RANDOM_POOL]) if random_top else urls[0]
 
 
 async def artwork_candidates(

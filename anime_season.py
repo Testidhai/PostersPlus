@@ -163,12 +163,9 @@ async def _find(client: httpx.AsyncClient, namespace: str, anime_id: int, tmdb_i
     return {}
 
 
-async def season_art(client: httpx.AsyncClient, *, namespace: str, anime_id: int,
-                     tmdb_id: str, place: anime_ids.SeasonPlace | None,
-                     tmdb_key: str | None) -> str | None:
-    """The landscape art path for a later season (a Kitsu cover url or a TMDB
-    still path, for tmdb.fetch_landscape_image), or None to keep the show's."""
-    key = f"seasonart:{_VERSION}:{namespace}:{anime_id}:{tmdb_id}"
+async def _cached_pick(key: str, find, label: str) -> str | None:
+    """The art path *find* settles on, cached under *key* (a miss for a
+    while, a failure briefly) and asked for once at a time."""
     cached = get_cached_tvdb_json(key)
     if cached is None:
         fut = _inflight.get(key)
@@ -178,14 +175,14 @@ async def season_art(client: httpx.AsyncClient, *, namespace: str, anime_id: int
             fut = asyncio.get_running_loop().create_future()
             _inflight[key] = fut
             try:
-                cached = await _find(client, namespace, anime_id, tmdb_id, place, tmdb_key)
+                cached = await find()
                 set_cached_tvdb_json(key, cached, _HIT_TTL if cached.get("path") else _MISS_TTL)
                 if cached.get("path"):
-                    logger.info(f"Season art for {namespace}:{anime_id} ({cached['via']}): {cached['path']}")
+                    logger.info(f"{label} ({cached['via']}): {cached['path']}")
             except Exception as exc:
                 # Never the render's problem: the show's backdrop stands in,
                 # and the title is tried again shortly.
-                logger.warning(f"No season art for {namespace}:{anime_id} yet: {exc}")
+                logger.warning(f"No {label.lower()} yet: {exc}")
                 cached = {}
                 set_cached_tvdb_json(key, cached, _FAIL_TTL)
             finally:
@@ -193,3 +190,31 @@ async def season_art(client: httpx.AsyncClient, *, namespace: str, anime_id: int
                 if not fut.done():
                     fut.set_result(cached)
     return anime.kitsu_image_url((cached or {}).get("path"))
+
+
+async def season_art(client: httpx.AsyncClient, *, namespace: str, anime_id: int,
+                     tmdb_id: str, place: anime_ids.SeasonPlace | None,
+                     tmdb_key: str | None) -> str | None:
+    """The landscape art path for a later season (a Kitsu cover url or a TMDB
+    still path, for tmdb.fetch_landscape_image), or None to keep the show's."""
+    return await _cached_pick(
+        f"seasonart:{_VERSION}:{namespace}:{anime_id}:{tmdb_id}",
+        lambda: _find(client, namespace, anime_id, tmdb_id, place, tmdb_key),
+        f"Season art for {namespace}:{anime_id}")
+
+
+async def kitsu_cover(client: httpx.AsyncClient, *, namespace: str, anime_id: int,
+                      tmdb_id: str) -> str | None:
+    """The entry's own Kitsu cover as its landscape art
+    (landscape_anime_provider_art=kitsu), when it passes the same checks as a
+    season's: big enough to cut to 16:9, and no lettering.  An AniList entry
+    borrows the Kitsu one through the mapping.  None keeps the backdrop."""
+    async def find() -> dict:
+        cover = await _kitsu_cover(client, namespace, anime_id)
+        if cover and await _vetted_cover(client, tmdb_id, cover):
+            return {"path": cover, "via": "kitsu"}
+        return {}
+
+    return await _cached_pick(
+        f"kitsucover:{_VERSION}:{namespace}:{anime_id}:{tmdb_id}", find,
+        f"Kitsu cover for {namespace}:{anime_id}")

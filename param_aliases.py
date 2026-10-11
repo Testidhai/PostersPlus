@@ -238,6 +238,9 @@ ALIASES: dict[str, str] = {
     "vignette_poster_color_bottom": "vpcb",
     "vignette_poster_color_top": "vpct",
     "wait_for_quality": "wfq",
+    # 2026-10-11: landscape's Anime Provider Source and pick.
+    "landscape_anime_provider_art": "_apa",
+    "landscape_poster_pick": "_pp",
 }
 
 LONG: dict[str, str] = {short: long for long, short in ALIASES.items()}

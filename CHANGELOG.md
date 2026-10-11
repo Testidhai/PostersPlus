@@ -15,6 +15,18 @@
   sliders now show whenever frosted chips or the disc are on, even with a
   dark info badge, which hides them otherwise.
 
+### Landscape Anime Provider Source and Backdrop Pick
+
+- Landscape gets its own **Anime Provider Source**: **Kitsu** uses an
+  anime's own wide Kitsu cover art as its backdrop (for an AniList id, the
+  matching Kitsu entry's) when it is big enough for 16:9 and has no
+  lettering, with your logo on top; otherwise the TMDB backdrop stays, as
+  with **As Requested**. TMDB, Fanart and TVDB were already the landscape
+  Anime Source.
+- **Backdrop Pick** (Top or Random top 5), where the operator allows random
+  posters, now works in landscape too, across TMDB, TVDB and Fanart
+  backdrops (`landscape_poster_pick=random`).
+
 ### Shorter poster URLs
 
 - Copied poster URLs are about 60% shorter for the same settings: every

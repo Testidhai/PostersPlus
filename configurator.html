@@ -3293,6 +3293,20 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                   <option value="cinemeta">Cinemeta</option>
                 </select>
               </div>
+              <div class="field" id="landscape-anime-provider-art-field" hidden>
+                <label class="field-label" data-tip="The backdrop for a title your addon asks for by an AniList, Kitsu or MAL id (most anime catalogs). As Requested uses the matching TMDB title's backdrop, from the Anime Source above. Kitsu uses Kitsu's own wide cover art of that entry (for an AniList id, the matching Kitsu entry's) when it is big enough for 16:9 and has no lettering on it, with your logo on top; otherwise the backdrop stays. Needs the title in the anime id mapping database. Later seasons get their own art either way.">Anime Provider Source</label>
+                <select id="cfg-landscape-anime-provider-art" onchange="build(); queuePreviewReload()">
+                  <option value="provider" selected>As Requested</option>
+                  <option value="kitsu">Kitsu</option>
+                </select>
+              </div>
+              <div class="field" id="landscape-poster-pick-field" hidden>
+                <label class="field-label" data-tip="Top uses the best-rated backdrop. Random picks one of the top five, fixed until the poster is re-rendered (about weekly), so some picks will be duds.">Backdrop Pick</label>
+                <select id="cfg-landscape-poster-pick" onchange="build(); queuePreviewReload()">
+                  <option value="top" selected>Top</option>
+                  <option value="random">Random top 5</option>
+                </select>
+              </div>
               <div class="toggle-row">
                 <span class="toggle-label" data-tip="For a title with no backdrop anywhere (new anime, small releases), crop the poster to 16:9 with your logo on top instead of showing a plain genre background. The cut keeps faces in frame, or else takes the upper part of the poster, where the title usually isn't.">Crop Poster When No Backdrop</span>
                 <label class="toggle-switch">
@@ -4969,10 +4983,12 @@ async function fetchServerCaps() {
     syncCustomFonts(Array.isArray(serverCaps.custom_fonts) ? serverCaps.custom_fonts : []);
     const _sourceReset = updateArtSourceOptions();
     document.getElementById('poster-pick-field').hidden = !serverCaps.random_posters;
+    document.getElementById('landscape-poster-pick-field').hidden = !serverCaps.random_posters;
+    document.getElementById('landscape-anime-provider-art-field').hidden = !serverCaps.anime_sources;
     // Restored before the caps answered, so the URL left them out (or, for a
     // source this instance doesn't offer, still carries it).
     if (_sourceReset || [...POSTER_SOURCE_IDS, ...LANDSCAPE_SOURCE_IDS].some(id => vEl(id) !== 'tmdb')
-        || vEl('cfg-poster-pick') !== 'top') build();
+        || vEl('cfg-poster-pick') !== 'top' || vEl('cfg-landscape-poster-pick') !== 'top') build();
     document.getElementById('header-admin').hidden = !serverCaps.admin_link;
     
     if (serverCaps.trending_fetch_count) {
@@ -7209,6 +7225,9 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
       const src = vEl(`cfg-landscape-art-source-${kind}`);
       if (src && src !== 'tmdb') params.set(`landscape_art_source_${kind}`, src);
     }
+    // Sent only away from the server's defaults ("provider", "top").
+    if (vEl('cfg-landscape-anime-provider-art') === 'kitsu') params.set('landscape_anime_provider_art', 'kitsu');
+    if (serverCaps.random_posters && vEl('cfg-landscape-poster-pick') === 'random') params.set('landscape_poster_pick', 'random');
     params.set('badge_pos',     vEl('cfg-landscape-badge-pos') || 'top_left');
     params.set('landscape_badge_scale', n('cfg-landscape-badge-scale').toFixed(2));
     params.set('landscape_info_scale', n('cfg-landscape-info-scale').toFixed(2));
@@ -10292,6 +10311,8 @@ function importUrl(urlStr, { silent = false, settingsOnly = false, preserveClien
     _setEl('tog-landscape', (p.get('shape') || '').toLowerCase() === 'landscape');
     _setEl('cfg-landscape-art',        p.get('landscape_art')        || 'textless');
     _restorePerTypeSource(p, 'landscape_art_source', 'cfg-landscape-art-source');
+    _setEl('cfg-landscape-anime-provider-art', p.get('landscape_anime_provider_art') === 'kitsu' ? 'kitsu' : 'provider');
+    _setEl('cfg-landscape-poster-pick', p.get('landscape_poster_pick') === 'random' ? 'random' : 'top');
     _setEl('cfg-landscape-badge-pos',  p.get('badge_pos')            || 'top_left');
     _setEl('cfg-landscape-color-link', p.get('landscape_color_link') || 'badge_follows_vignette');
     _setEl('cfg-landscape-badge-scale', p.get('landscape_badge_scale') || '1.00');
