@@ -1965,12 +1965,11 @@
     justify-content: flex-end;
   }
   .report-subject { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
-  /* Choose Lists: the picked lists under the addon URL, and the modal's rows. */
+  /* Choose Lists: its button under the addon URL, and the modal's rows. */
   .trending-lists-row {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    display: flex; align-items: center; justify-content: flex-end; gap: 12px;
     margin-top: var(--gap-label);
   }
-  .trending-lists-row .field-hint { margin: 0; min-width: 0; }
   .trending-lists-fields {
     display: flex; flex-direction: column; gap: 14px;
     max-height: 58vh; overflow-y: auto; padding-right: 4px;
@@ -1988,9 +1987,11 @@
   .tl-opt-name em { font-style: normal; color: var(--text-secondary); }
   /* Which ticked list posters drawn through the poster URL rank on: only a
      choice once a type has two lists ticked. */
-  .tl-rank-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+  .tl-rank-rows { display: flex; flex-direction: column; gap: 6px; }
+  .tl-rank-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-secondary); }
   .tl-rank-row[hidden] { display: none; }
-  .tl-rank-row select { flex: 1; min-width: 0; max-width: 280px; }
+  .tl-rank-row > span { flex: 0 0 110px; }
+  .tl-rank-row select { flex: 1; min-width: 0; }
   .tl-top10 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .tl-top10 select { flex: 1 1 160px; min-width: 0; }
   .report-cats { display: flex; flex-direction: column; gap: 6px; }
@@ -2476,7 +2477,6 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
               </div>
               <!-- Shown while the operator lets visitors pick (TRENDING_LIST_CHOICE). -->
               <div class="trending-lists-row" id="trending-lists-row" style="display:none;">
-                <div class="field-hint" id="trending-lists-summary"></div>
                 <button type="button" class="btn-search" onclick="openTrendingListsModal()">Choose Lists</button>
               </div>
               <!-- The pick, as trending_list= (see trending_lists.py): a setting
@@ -6515,9 +6515,6 @@ function updateTrendingCatalogsField() {
     + `${cfg ? cfg + '/' : ''}manifest.json`;
   const caps = serverCaps.trending_lists;
   document.getElementById('trending-lists-row').style.display = caps && caps.enabled ? '' : 'none';
-  if (caps && caps.enabled) {
-    document.getElementById('trending-lists-summary').textContent = trendingListSummary(parseTrendingList(tl));
-  }
 }
 
 // ── Trending lists (trending_list=) ───────────────────────────────────────────
@@ -6591,17 +6588,6 @@ function _tlName(e, id) {
   }
   return (caps.lists[e].choices.find(ch => ch.id === id) || {}).name || id;
 }
-function trendingListSummary(pick) {
-  const caps = serverCaps.trending_lists;
-  if (!pick || !caps) return '';
-  const lists = _TL_ENDPOINTS.filter(e => caps.lists[e].choices.length > 1 || !pick[e].length).map(e =>
-    `${_TL_NAMES[e]}: ${pick[e].length ? pick[e].map(id => _tlName(e, id)).join(', ') : 'none'}`);
-  const langName = id => ((caps.languages || []).find(l => l.id === id) || {}).name || id;
-  const langs = (pick.langs || []).length
-    ? ` · ${pick.langs.length <= 2 ? pick.langs.map(langName).join(', ') : pick.langs.length + ' languages'} only`
-    : '';
-  return lists.join(' · ') + (pick.home ? ' · Out at home only' : '') + langs;
-}
 function _fillTrendingListsModal(pick) {
   const caps = serverCaps.trending_lists;
   const esc = t => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -6620,12 +6606,8 @@ function _fillTrendingListsModal(pick) {
         </div>`).join('');
     return `
     <div class="field">
-      <label class="field-label" data-tip="Each list ticked is a catalog of its own, its posters numbered by that list. Posters drawn through your poster URL show their rank on the one chosen under Poster URL, in every row.">${_TL_NAMES[e]}</label>
+      <label class="field-label" data-tip="Each list ticked is a catalog of its own, its posters numbered by that list. Posters drawn through your poster URL show their rank on the one chosen under Poster URL Ranks, in every row.">${_TL_NAMES[e]}</label>
       <div class="tl-opts" id="tl-opts-${e}">${opts}</div>
-      <div class="tl-rank-row" id="tl-rank-row-${e}" hidden>
-        <label for="tl-rank-${e}" data-tip="Posters drawn through your poster URL (AIOMetadata's poster pattern, Nuvio's override) can show only one rank: their rank on this list, in every row.">Poster URL ranks on</label>
-        <select id="tl-rank-${e}" data-want="${esc(pick[e][0] || '')}"></select>
-      </div>
     </div>`;
   });
   if (caps.top10) {
@@ -6663,6 +6645,17 @@ function _fillTrendingListsModal(pick) {
         </div>`).join('')}</div>
     </div>`);
   }
+  // Last: which ticked list each type's posters rank on, for a type with
+  // two or more ticked.
+  rows.push(`
+    <div class="field" id="tl-rank-field" hidden>
+      <label class="field-label" data-tip="Posters drawn through your poster URL (AIOMetadata's poster pattern, Nuvio's override) can show only one rank: their rank on the list chosen here for their type, in every row.">Poster URL Ranks</label>
+      <div class="tl-rank-rows">${_TL_ENDPOINTS.map(e => `
+        <label class="tl-rank-row" id="tl-rank-row-${e}" hidden>
+          <span>${_TL_NAMES[e]}</span>
+          <select id="tl-rank-${e}" data-want="${esc(pick[e][0] || '')}"></select>
+        </label>`).join('')}</div>
+    </div>`);
   document.getElementById('trending-lists-fields').innerHTML = rows.join('');
   document.getElementById('trending-lists-msg').hidden = true;
   _TL_ENDPOINTS.forEach(_tlSync);
@@ -6756,6 +6749,8 @@ function _tlSync(e) {
   for (const t of on) sel.add(new Option(_tlName(e, t.value), t.value));
   sel.value = on.some(t => t.value === want) ? want : (on[0] ? on[0].value : '');
   document.getElementById(`tl-rank-row-${e}`).hidden = on.length < 2;
+  document.getElementById('tl-rank-field').hidden =
+    _TL_ENDPOINTS.every(x => document.getElementById(`tl-rank-row-${x}`).hidden);
 }
 function openTrendingListsModal() {
   if (!serverCaps.trending_lists) return;
