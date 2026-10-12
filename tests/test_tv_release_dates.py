@@ -177,9 +177,10 @@ class LabelTests(unittest.TestCase):
         # Other languages use their own word for Airing in their date order.
         self.assertNotIn("Airing", translate_sash("Sep 29 Airing", "fr-FR"))
 
-    def test_airing_dates_is_off_by_default_and_parses(self):
-        self.assertFalse(main.RequestConfig().airing_dates)
-        self.assertTrue(main.build_request_config({"airing_dates": "true"}).airing_dates)
+    def test_airing_dates_is_on_by_default_and_parses(self):
+        self.assertTrue(main.RequestConfig().airing_dates)
+        self.assertTrue(main.build_request_config({}).airing_dates)
+        self.assertFalse(main.build_request_config({"airing_dates": "false"}).airing_dates)
 
 
 class SlotTests(unittest.TestCase):

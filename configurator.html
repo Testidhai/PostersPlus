@@ -3617,7 +3617,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
               <div class="toggle-row" id="sash-airing-dates-row">
                 <span class="toggle-label" data-tip="A series that is on air shows when its next episode airs — “Airing Oct 15” — when TMDB has scheduled it. Without a scheduled episode, or on the day it airs, the sash reads Airing as usual.">Release Status: Next Episode Date</span>
                 <label class="toggle-switch">
-                  <input type="checkbox" id="tog-airing-dates" onchange="build(); queuePreviewReload()">
+                  <input type="checkbox" id="tog-airing-dates" checked onchange="build(); queuePreviewReload()">
                   <div class="toggle-track"><div class="toggle-thumb"></div></div>
                 </label>
               </div>
@@ -7554,7 +7554,8 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
   }
   params.set('release_status_cinema_only', c('tog-release-cinema-only') ? 'true' : 'false');
   params.set('release_status_dates', c('tog-release-dates') ? 'true' : 'false');
-  if (c('tog-airing-dates')) params.set('airing_dates', 'true');
+  // On by default, so only the off state is written.
+  if (!c('tog-airing-dates')) params.set('airing_dates', 'false');
   // One value for both shapes: whether a title is out does not depend on
   // which layout is drawing it.
   params.set('hide_unreleased_rating', c('tog-hide-unreleased-rating') ? 'true' : 'false');
@@ -10625,7 +10626,7 @@ function importUrl(urlStr, { silent = false, settingsOnly = false, preserveClien
   if (p.has('cinema_greyscale_skip_if_available')) _setEl('tog-cinema-greyscale-skip', p.get('cinema_greyscale_skip_if_available'));
   if (p.has('release_status_cinema_only')) _setEl('tog-release-cinema-only', p.get('release_status_cinema_only'));
   if (p.has('release_status_dates')) _setEl('tog-release-dates', p.get('release_status_dates'));
-  _setEl('tog-airing-dates', p.get('airing_dates') === 'true');
+  _setEl('tog-airing-dates', !p.has('airing_dates') || p.get('airing_dates') !== 'false');
   if (p.has('hide_unreleased_rating')) _setEl('tog-hide-unreleased-rating', p.get('hide_unreleased_rating'));
   {
     const _mo = (p.get('meta_order') || '').toLowerCase().replace(/\s+/g, '');

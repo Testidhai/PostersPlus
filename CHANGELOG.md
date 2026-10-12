@@ -4,9 +4,9 @@
 
 ### Next episode date on Airing
 
-- **Release Status: Next Episode Date** (`airing_dates=true`, off by
-  default) dates a series that is on air with its next episode: `Airing
-  Oct 15`. TMDB sends the date with the series details, so it costs no
+- The **Airing** sash shows when the next episode airs: `Airing Oct 15`.
+  On by default; **Release Status: Next Episode Date** turns it off
+  (`airing_dates=false`). TMDB sends the date with the series details, so it costs no
   extra API calls. With a list of the shows you watch, the posters work as
   a simple airing calendar.
 - A season that premiered shortly after a show's details were cached read
