@@ -4000,7 +4000,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                 </div>
               </div>
               <div class="field">
-                <label class="field-label">Group 2</label>
+                <label class="field-label" data-tip="Beside Chip is the top corner the notch or sash leaves free. Above/Below Logo centre the group on the title logo, however tall it is, moving further off if the rating is in the way. A group whose corner is taken slides away from the edge until it fits; badges that still don't fit drop from the end of the list. Custom puts it exactly where you set it, for dodging a badge your client draws; Align picks which edge of the row sits at X.">Group 2</label>
                 <div class="gb-group-row">
                   <select id="gb-anchor-2" onchange="gbFromControls()">
                   <option value="chip">Beside Chip</option>
@@ -4026,7 +4026,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                 </div>
               </div>
               <div class="field">
-                <label class="field-label">Group 3</label>
+                <label class="field-label" data-tip="Beside Chip is the top corner the notch or sash leaves free. Above/Below Logo centre the group on the title logo, however tall it is, moving further off if the rating is in the way. A group whose corner is taken slides away from the edge until it fits; badges that still don't fit drop from the end of the list. Custom puts it exactly where you set it, for dodging a badge your client draws; Align picks which edge of the row sits at X.">Group 3</label>
                 <div class="gb-group-row">
                   <select id="gb-anchor-3" onchange="gbFromControls()">
                   <option value="chip">Beside Chip</option>
@@ -4052,7 +4052,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                 </div>
               </div>
               <div class="field">
-                <label class="field-label">Group 4</label>
+                <label class="field-label" data-tip="Beside Chip is the top corner the notch or sash leaves free. Above/Below Logo centre the group on the title logo, however tall it is, moving further off if the rating is in the way. A group whose corner is taken slides away from the edge until it fits; badges that still don't fit drop from the end of the list. Custom puts it exactly where you set it, for dodging a badge your client draws; Align picks which edge of the row sits at X.">Group 4</label>
                 <div class="gb-group-row">
                   <select id="gb-anchor-4" onchange="gbFromControls()">
                   <option value="chip">Beside Chip</option>
@@ -8816,10 +8816,15 @@ function onNotchVignetteColorChange(el) {
 }
 
 function onFrostReferenceChange(el) {
-  if (el.checked) _setEl('tog-notch-vignette-color', false);
   const on = el.checked;
-  _setEl('tog-bar-frost-reference',  on ? 'true' : 'false');
-  _setEl('tog-sash-frost-reference', on ? 'true' : 'false');
+  _setEl('tog-bar-frost-reference', on ? 'true' : 'false');
+  // The notch's twin and its Match Tinted Vignette are the portrait's alone:
+  // from the landscape view this is the landscape Bar's own setting
+  // (kept per shape), and _writeShared syncs the twin on the way back.
+  if (!c('tog-landscape')) {
+    if (on) _setEl('tog-notch-vignette-color', false);
+    _setEl('tog-sash-frost-reference', on ? 'true' : 'false');
+  }
   updateBadgeStyleFields();
   build();
   queuePreviewReload();

@@ -685,6 +685,39 @@ def draw_score_bar_vertical(
 # Frosted bar (rating_display_mode == 4)
 # ---------------------------------------------------------------------------
 
+_BAR_SILVER = (210, 210, 218)
+_BAR_GOLD   = (212, 175, 55)
+
+
+def _frosted_bar_geometry(height: int, bar_height_ratio: float, bottom_inset: float) -> tuple[float, float]:
+    """(height, top) of the Bar on a canvas *height* tall, in 500-wide units."""
+    bar_h = max(fixed(24), px(height * bar_height_ratio))
+    return bar_h, height - bar_h - px(height * bottom_inset)
+
+
+def frosted_bar_box(size: tuple[int, int], bar_height_ratio: float,
+                    bottom_inset: float = 0.0) -> tuple[int, int, int, int]:
+    """The box draw_frosted_bar fills, for laying out around it."""
+    bar_h, bar_y = _frosted_bar_geometry(size[1], bar_height_ratio, bottom_inset)
+    bar_h, bar_y = round(bar_h), round(bar_y)
+    return 0, bar_y, size[0], bar_y + bar_h
+
+
+def bar_fill_color(style: str, accent: str, score: int | None,
+                   custom_palette: "CustomScorePalette | None" = None) -> tuple[int, int, int] | None:
+    """The fill_color draw_frosted_bar takes for Bar style *style* in Rating
+    Bar Colour *accent*: None for a style with no fill, and for "sample",
+    which draw_frosted_bar derives from the bar's own tint."""
+    if style not in ("rating_black", "rating_frosted") or accent == "sample":
+        return None
+    fixed_colour = {"silver": _BAR_SILVER, "gold": _BAR_GOLD}.get(accent)
+    if fixed_colour is not None:
+        return fixed_colour
+    if score is None:
+        return _BAR_SILVER
+    mode = 3 if accent == "palette_custom" else int(accent[-1])
+    return score_color_for_mode(score, mode, custom_palette)[0]
+
 def draw_frosted_bar(
     image: Image.Image,
     left_text: str,
@@ -723,8 +756,7 @@ def draw_frosted_bar(
     width, height = image.size
     # Laid out in 500-wide units (pxscale) and snapped to this canvas's pixels
     # once the sizes that derive from bar_h are known.  Plain ints at 500.
-    bar_h = max(fixed(24), px(height * bar_height_ratio))
-    bar_y = height - bar_h - px(height * bottom_inset)
+    bar_h, bar_y = _frosted_bar_geometry(height, bar_height_ratio, bottom_inset)
 
     # ── Font ─────────────────────────────────────────────────────────────────
     font_size = max(fixed(10), px(bar_h * font_size_ratio))
@@ -743,8 +775,8 @@ def draw_frosted_bar(
     # downward compensation to account for the accent bar stealing top space.
     text_y = px((bar_h - (_ref_b[3] - _ref_b[1])) / 2) - _ref_b[1]
 
-    _SILVER = (210, 210, 218)
-    _GOLD   = (212, 175, 55)
+    _SILVER = _BAR_SILVER
+    _GOLD   = _BAR_GOLD
     # Solid accent styles use a thin stripe; rating bar modes use a larger one.
     _accent_stripe = max(fixed(2), px(bar_h * 0.06))
     _rating_stripe = max(fixed(3), px(bar_h * 0.10))

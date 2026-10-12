@@ -605,3 +605,36 @@ def draw_run(image: Image.Image, draw: ImageDraw.ImageDraw, run: list[tuple], x:
         else:
             x += v
     return x
+
+
+def bar_center_run(items: list[tuple[str, float]], lead_text: str, rating_first: bool,
+                   scale: str, out_of_10: bool, style: str):
+    """The Bar mode's center_run (ratings.draw_frosted_bar) for rating badges
+    in the "★ score" part's place.  After the rest of the label (*lead_text*,
+    drawn as given), or before it when the rating comes first: no "·" between,
+    as the badge itself reads as the break.  Short of room, sites drop off the
+    end.  With no other text, one run per badge, as many as fit with at
+    least the usual gap, for the bar to spread across itself."""
+    def fit(font_size, measure, budget, lead_w):
+        n = len(items)
+        while True:
+            run = rating_run(items[:n], font_size, scale, out_of_10, style)
+            if n <= 1 or lead_w + run_width(run, measure) <= budget:
+                return run
+            n -= 1
+
+    def center_run(font_size, measure, budget):
+        if not lead_text:
+            runs = [rating_run([item], font_size, scale, out_of_10, style) for item in items]
+            gap = font_size * _ENTRY_GAP
+            n = len(runs)
+            while n > 1 and sum(run_width(r, measure) for r in runs[:n]) + (n - 1) * gap > budget:
+                n -= 1
+            return runs[:n]
+        if rating_first:
+            tail = [("gap", font_size * 0.62), ("text", lead_text)]
+            return [fit(font_size, measure, budget, run_width(tail, measure)) + tail]
+        lead = [("text", lead_text), ("gap", font_size * 0.62)]
+        return [lead + fit(font_size, measure, budget, run_width(lead, measure))]
+
+    return center_run

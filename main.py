@@ -953,6 +953,7 @@ from ratings import (
     CustomScorePalette,
     MDBLIST_QUOTA,
     calculate_weighted_score,
+    bar_fill_color,
     draw_frosted_bar,
     draw_score_bar,
     fetch_rating,
@@ -5593,30 +5594,10 @@ def _build_poster(
             if _rb_items and cfg.bar_append in ("rating_year", "rating"):
                 _lead_parts = [p for p in _parts if not p.startswith("★ ")]
                 _lead_sep = "  ·  " if len(_lead_parts) + 1 <= 2 else " · "
-
-                def _bar_run(font_size, measure, budget):
-                    if not _lead_parts:
-                        # One run per badge, as many as fit with at least the
-                        # usual gap between them; draw_frosted_bar spaces them.
-                        runs = [rating_badges.rating_run([item], font_size, cfg.rating_badge_scale,
-                                                         cfg.bar_score_out_of_10, cfg.rating_badge_style)
-                                for item in _rb_items]
-                        gap = font_size * rating_badges._ENTRY_GAP
-                        n = len(runs)
-                        while n > 1 and (sum(rating_badges.run_width(r, measure) for r in runs[:n])
-                                         + (n - 1) * gap > budget):
-                            n -= 1
-                        return runs[:n]
-                    # No "·" before the first badge: the badge itself reads as
-                    # the break, and a dot beside it looks like two separators.
-                    # Rating first (meta_order): the badges lead instead.
-                    if _bar_keys and _bar_keys[0] == "rating":
-                        tail = [("gap", font_size * 0.62), ("text", visual(_lead_sep.join(_lead_parts)))]
-                        return [_rb_run(font_size, cfg.bar_score_out_of_10, measure, budget,
-                                        rating_badges.run_width(tail, measure)) + tail]
-                    lead = [("text", visual(_lead_sep.join(_lead_parts))), ("gap", font_size * 0.62)]
-                    return [lead + _rb_run(font_size, cfg.bar_score_out_of_10, measure, budget,
-                                           rating_badges.run_width(lead, measure))]
+                _bar_run = rating_badges.bar_center_run(
+                    _rb_items, visual(_lead_sep.join(_lead_parts)) if _lead_parts else "",
+                    bool(_bar_keys) and _bar_keys[0] == "rating",
+                    cfg.rating_badge_scale, cfg.bar_score_out_of_10, cfg.rating_badge_style)
             image = draw_frosted_bar(
                 image,
                 left_text   = "",
@@ -5630,19 +5611,9 @@ def _build_poster(
                 bottom_inset     = cfg.bar_bottom_inset,
                 style            = _bar_style,
                 score            = score if _has_score else None,
-                fill_color       = (
-                    None  # "sample" → let draw_frosted_bar derive from bar tint
-                    if cfg.bar_accent == "sample" else
-                    {"silver": (210, 210, 218), "gold": (212, 175, 55)}.get(cfg.bar_accent)
-                    or (
-                        score_color_for_mode(
-                            int(score),
-                            3 if cfg.bar_accent == "palette_custom" else int(cfg.bar_accent[-1]),
-                            cfg.score_custom_palette,
-                        )[0]
-                        if score not in ("N/A", None) else (210, 210, 218)
-                    )
-                ) if _bar_style in ("rating_black", "rating_frosted") else None,
+                fill_color       = bar_fill_color(
+                    _bar_style, cfg.bar_accent,
+                    int(score) if score not in ("N/A", None) else None, cfg.score_custom_palette),
                 tint_rgb         = _frost_tint,
                 text_color       = cfg.rating_text_color,
                 center_run       = _bar_run,

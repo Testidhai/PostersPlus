@@ -948,7 +948,7 @@ def _draw_bar(image: Image.Image, cfg, genre_label: str, release_year: str | Non
     and its sliders (bar_*), the bar's height scaled by _BAR_SCALE.  Returns
     the poster and the bar's box."""
     from main import _meta_sorted
-    from ratings import draw_frosted_bar, score_color_for_mode
+    from ratings import bar_fill_color, draw_frosted_bar, frosted_bar_box
 
     # The Rating Bar styles draw the score as a fill; with the rating hidden
     # each falls back to the plain body it is built on, as on a portrait.
@@ -975,51 +975,19 @@ def _draw_bar(image: Image.Image, cfg, genre_label: str, release_year: str | Non
     sep = "  ·  " if len(parts) <= 2 else " · "
 
     # Rating badges (landscape_rating_badges) take the "★ score" part's place,
-    # after the rest of the label, as portrait's Bar does: spread across the
-    # bar when nothing else is on it, dropping sites off the end to fit.
+    # as on portrait's Bar.
     center_run = None
     if rating_items and cfg.bar_append in ("rating_year", "rating"):
         import rating_badges
         lead_parts = [p for p in parts if not p.startswith("★ ")]
         lead_sep = "  ·  " if len(lead_parts) + 1 <= 2 else " · "
+        center_run = rating_badges.bar_center_run(
+            rating_items, visual(lead_sep.join(lead_parts)) if lead_parts else "",
+            bool(keys) and keys[0] == "rating",
+            cfg.rating_badge_scale, cfg.bar_score_out_of_10, cfg.rating_badge_style)
 
-        def _run(items, font_size):
-            return rating_badges.rating_run(items, font_size, cfg.rating_badge_scale,
-                                            cfg.bar_score_out_of_10, cfg.rating_badge_style)
-
-        def _fit(font_size, measure, budget, lead_w):
-            n = len(rating_items)
-            while True:
-                run = _run(rating_items[:n], font_size)
-                if n <= 1 or lead_w + rating_badges.run_width(run, measure) <= budget:
-                    return run
-                n -= 1
-
-        def center_run(font_size, measure, budget):
-            if not lead_parts:
-                runs = [_run([item], font_size) for item in rating_items]
-                gap = font_size * rating_badges._ENTRY_GAP
-                n = len(runs)
-                while n > 1 and (sum(rating_badges.run_width(r, measure) for r in runs[:n])
-                                 + (n - 1) * gap > budget):
-                    n -= 1
-                return runs[:n]
-            text = ("text", visual(lead_sep.join(lead_parts)))
-            if keys and keys[0] == "rating":
-                tail = [("gap", font_size * 0.62), text]
-                return [_fit(font_size, measure, budget, rating_badges.run_width(tail, measure)) + tail]
-            lead = [text, ("gap", font_size * 0.62)]
-            return [lead + _fit(font_size, measure, budget, rating_badges.run_width(lead, measure))]
-
-    fill_color = None
-    if style in ("rating_black", "rating_frosted") and cfg.bar_accent != "sample":
-        fill_color = {"silver": (210, 210, 218), "gold": (212, 175, 55)}.get(cfg.bar_accent)
-        if fill_color is None:
-            fill_color = (score_color_for_mode(value, 3 if cfg.bar_accent == "palette_custom"
-                                               else int(cfg.bar_accent[-1]), cfg.score_custom_palette)[0]
-                          if value is not None else (210, 210, 218))
-
-    width, height = image.size
+    # Flush with the bottom edge: bar_bottom_inset is the portrait client
+    # profile's crop compensation (primary_client), not a landscape setting.
     ratio = cfg.bar_height_ratio * _BAR_SCALE
     image = draw_frosted_bar(
         image, left_text="", center_text=sep.join(parts), right_text="",
@@ -1028,17 +996,13 @@ def _draw_bar(image: Image.Image, cfg, genre_label: str, release_year: str | Non
         frost_opacity=cfg.bar_frost_opacity,
         frost_saturation=cfg.bar_frost_saturation,
         frost_reference=cfg.frost_reference,
-        bottom_inset=cfg.bar_bottom_inset,
         style=style,
         score=value,
-        fill_color=fill_color,
+        fill_color=bar_fill_color(style, cfg.bar_accent, value, cfg.score_custom_palette),
         tint_rgb=tint,
         center_run=center_run,
     )
-    # draw_frosted_bar's own geometry, at this canvas's (unscaled) pixels.
-    bar_h = max(24, int(height * ratio))
-    bar_y = height - bar_h - int(height * cfg.bar_bottom_inset)
-    return image, (0, bar_y, width, bar_y + bar_h)
+    return image, frosted_bar_box(image.size, ratio)
 
 
 def _draw_info_strip(image: Image.Image, genre_label: str,

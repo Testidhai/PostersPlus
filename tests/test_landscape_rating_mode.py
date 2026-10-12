@@ -74,6 +74,12 @@ class RatingModeTests(unittest.TestCase):
         bar_h = int(563 * main.RequestConfig().bar_height_ratio * landscape._BAR_SCALE)
         self.assertLess(white(bar)[-1], 563 - bar_h)
 
+    def test_bar_ignores_the_portrait_client_inset(self):
+        # bar_bottom_inset is primary_client's portrait crop compensation.
+        flush = _render(landscape_rating_mode="bar")
+        inset = _render(landscape_rating_mode="bar", bar_bottom_inset=0.05)
+        self.assertEqual(np.abs(flush - inset).max(), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
