@@ -2852,6 +2852,16 @@ def _render_config_signature(cfg: "RequestConfig") -> str:
     # by content hash, so a new upload re-renders the posters drawn in it.
     if str(fields.get("label_font", "")).startswith(custom_fonts.KEY_PREFIX):
         fields["label_font_file"] = custom_fonts.file_of(fields["label_font"])
+    # Premiere moved under Airing in the default order (seed "default2").  The
+    # new default is keyed as the old one was, so the change doesn't re-key —
+    # and re-render — every cached composite; the few it draws differently
+    # (a new show on air) expire with Airing's tier within days.  The old
+    # order, now only reached spelled out, takes a marker so the two never
+    # share a key.
+    if fields.get("sash_priority") == list(_cfg.SASH_PRIORITY):
+        fields["sash_priority"] = list(_SASH_PRIORITY_V1)
+    elif fields.get("sash_priority") == list(_SASH_PRIORITY_V1):
+        fields["sash_priority"] = [*_SASH_PRIORITY_V1, "#v1"]
     return json.dumps(fields, sort_keys=True, default=_stable)
 
 

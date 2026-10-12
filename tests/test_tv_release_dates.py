@@ -396,3 +396,10 @@ class SashOrderSeedTests(unittest.TestCase):
         self.assertIn("serverCaps.sash_priority_diff_bases", html)
         slots = re.findall(r"\{ id:'(\w+)',", html.split("const SASH_SLOTS", 1)[1].split("];", 1)[0])
         self.assertEqual(slots, [s for s in main._cfg.SASH_PRIORITY if s in slots])
+
+    def test_the_new_default_keeps_the_old_defaults_cache_keys(self):
+        import json
+        default_key = main._render_config_signature(main.RequestConfig())
+        self.assertEqual(json.loads(default_key)["sash_priority"], list(main._SASH_PRIORITY_V1))
+        explicit_old = main.RequestConfig(sash_priority=list(main._SASH_PRIORITY_V1))
+        self.assertNotEqual(main._render_config_signature(explicit_old), default_key)
