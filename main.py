@@ -12212,7 +12212,7 @@ async def get_poster(
         _stale_next_episode = False
         if type in ("tv", "series"):
             _next_day = _parse_tmdb_date((tmdb_data.get("next_episode") or {}).get("air_date"))
-            _stale_next_episode = _next_day is not None and _next_day < datetime.now(timezone.utc).date()
+            _stale_next_episode = _next_day is not None and _next_day < datetime.now().date()
         if (rcfg.release_status_dates and type in ("tv", "series")
                 and _release_status in ("Production", "Renewed", "Airing")):
             # Worked out with the status, from the same episode data — no call.
@@ -12650,11 +12650,13 @@ async def get_poster(
             # A dated sash ("Airing Oct 15", "Oct 16 Cinema") is dropped on its
             # day (release_date_label), so the poster printing it lasts no
             # longer than that: an Airing render is otherwise kept three days,
-            # past a weekly episode's date.
+            # past a weekly episode's date.  Local midnight, as the label's
+            # date.today() reads it: UTC's, on a server west of it, came hours
+            # early and re-rendered the still-dated poster every minute.
             _dated = _parse_tmdb_date(getattr(discovery_meta, "upcoming_release_date", None))
             if _dated is not None:
-                _date_ttl = max(60, int(datetime(_dated.year, _dated.month, _dated.day,
-                                                 tzinfo=timezone.utc).timestamp() - time.time()))
+                _date_ttl = max(60, int(datetime(_dated.year, _dated.month, _dated.day).timestamp()
+                                        - time.time()))
                 _ttl_override = (
                     _date_ttl if _ttl_override is None else min(_ttl_override, _date_ttl)
                 )

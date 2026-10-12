@@ -3610,7 +3610,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
               <div class="toggle-row" id="sash-release-dates-row">
                 <span class="toggle-label" data-tip="When TMDB has a release date for a movie that is in cinemas or in production, the sash shows it and what it opens instead of the status — “Oct 16 Cinema”, “Streams Oct 23”, or “Dec 2027 Cinema” when it is a year or more away. In cinemas, the date is the next digital or disc release; in production, the first release anywhere.">Release Status: Show Date</span>
                 <label class="toggle-switch">
-                  <input type="checkbox" id="tog-release-dates" checked onchange="build(); queuePreviewReload()">
+                  <input type="checkbox" id="tog-release-dates" checked onchange="updateSashBadgeFields(); build(); queuePreviewReload()">
                   <div class="toggle-track"><div class="toggle-thumb"></div></div>
                 </label>
               </div>
@@ -8660,7 +8660,8 @@ function updateSashBadgeFields() {
   // Release-status-only filter does nothing when no sash is drawn.
   document.getElementById('sash-release-cinema-only-row').style.display = shown ? '' : 'none';
   document.getElementById('sash-release-dates-row').style.display = shown ? '' : 'none';
-  document.getElementById('sash-airing-dates-row').style.display = shown ? '' : 'none';
+  // Next Episode Date is one of the dates Show Date turns on.
+  document.getElementById('sash-airing-dates-row').style.display = shown && c('tog-release-dates') ? '' : 'none';
   document.getElementById('sash-style-field').style.display      = isNotch ? '' : 'none';
   document.getElementById('sash-text-color-field').style.display = shown ? '' : 'none';
   document.getElementById('sash-muted-row').style.display        = isBand ? '' : 'none';
