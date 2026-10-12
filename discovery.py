@@ -449,6 +449,15 @@ def tv_release_facts(
     last_ep = tmdb_data.get("last_episode") or None
     seasons = tmdb_data.get("seasons") or []
 
+    # Data cached before the "next" episode aired: it is the latest one now.
+    # Left as next, a season that premiered since read as an undated
+    # "Renewed" (its own date passed, its last episode the old finale).
+    _next_aired = _parse_date(_episode_date(next_ep))
+    if _next_aired is not None and _next_aired <= today:
+        if (_parse_date(_episode_date(last_ep)) or date.min) <= _next_aired:
+            last_ep = next_ep
+        next_ep = None
+
     def _future(value: str | None) -> date | None:
         d = _parse_date(value)
         return d if d is not None and d > today else None
@@ -510,6 +519,10 @@ def tv_release_facts(
         air_date = _future(air)
         if air_date is not None:
             return "Renewed", air_date.isoformat(), season_window(n)
+        premiered = _parse_date(air)
+        if premiered is not None and (today - premiered).days <= TV_RECENT_EPISODE_DAYS:
+            # Its premiere has been and gone, the episode data hasn't caught up.
+            return "Airing", None, None
         return "Renewed", None, None
     return None, None, None
 

@@ -95,6 +95,27 @@ class ReturningSeriesTests(unittest.TestCase):
         # The anime providers ship a status and nothing to refine it with.
         self.assertEqual(facts("Returning Series"), ("Airing", None, None))
 
+    def test_a_premiere_cached_before_it_aired_is_airing(self):
+        # Elsbeth, cached the day before S4E1: the "next" episode has aired
+        # since, and used to leave an undated "Renewed".
+        self.assertEqual(
+            facts("Returning Series", last_episode=ep(3, 20, "2026-05-21"),
+                  next_episode=ep(4, 1, "2026-09-18"),
+                  seasons=seasons((3, "2025-10-12"), (4, "2026-09-18"))),
+            ("Airing", None, None))
+
+    def test_premiere_day_is_airing(self):
+        self.assertEqual(
+            facts("Returning Series", last_episode=ep(3, 20, "2026-05-21"),
+                  next_episode=ep(4, 1, TODAY.isoformat())),
+            ("Airing", None, None))
+
+    def test_a_listed_season_that_just_premiered_is_airing(self):
+        self.assertEqual(
+            facts("Returning Series", last_episode=ep(3, 20, "2026-05-21"),
+                  seasons=seasons((3, "2025-10-12"), (4, "2026-09-18"))),
+            ("Airing", None, None))
+
 
 class OtherStatusTests(unittest.TestCase):
     def test_an_unaired_show_is_dated_with_its_premiere(self):
@@ -168,3 +189,48 @@ class SlotTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NextEpisodeExpiryTests(unittest.TestCase):
+    """A series row is refreshed once its scheduled next episode has aired."""
+
+    def setUp(self):
+        import os, tempfile
+        import cache
+        self.cache = cache
+        self._dir = tempfile.TemporaryDirectory()
+        self._saved = (cache.DB_PATH, cache._initialised, getattr(cache._local, "conn", None))
+        cache.DB_PATH = os.path.join(self._dir.name, "cache.db")
+        cache._local.conn = None
+        cache.init_db()
+
+    def tearDown(self):
+        conn = getattr(self.cache._local, "conn", None)
+        if conn is not None:
+            conn.close()
+        self.cache.DB_PATH, self.cache._initialised, self.cache._local.conn = self._saved
+        self._dir.cleanup()
+
+    def _store(self, key, next_air):
+        import time
+        self.cache.set_cached_tmdb_metadata(
+            key, "T", "2020", [18], True, "/p.jpg", [], original_title="T", vote_count=10,
+            tmdb_release_date="2020-01-01", next_episode=ep(4, 1, next_air.isoformat()),
+            metadata_version=6,
+        )
+        # Cached three days ago.
+        self.cache.get_db().execute(
+            "UPDATE tmdb_metadata_cache SET cached_at = ? WHERE cache_key = ?",
+            (time.time() - 3 * 86400, key))
+        self.cache.get_db().commit()
+
+    def test_rows_expire_when_the_next_episode_airs(self):
+        from datetime import timedelta
+        from unittest import mock
+        today = date.today()
+        self._store("tv_1_en_x", today - timedelta(days=1))
+        self._store("tv_2_en_x", today + timedelta(days=2))
+        with mock.patch.object(self.cache, "invalidate_final_posters") as inv:
+            self.assertIsNone(self.cache.get_cached_tmdb_metadata("tv_1_en_x"))
+            inv.assert_called_once_with("1", "tv")
+        self.assertIsNotNone(self.cache.get_cached_tmdb_metadata("tv_2_en_x"))

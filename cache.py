@@ -1922,6 +1922,21 @@ def get_cached_tmdb_metadata(cache_key: str) -> dict | None:
             except Exception:
                 pass
 
+        # A series' scheduled episode is the same kind of moment: once it has
+        # aired, the row's next/last episodes are a week behind the show.
+        # Kept, a season that premiered the day after caching read as an
+        # undated "Renewed" until the weekly refresh instead of "Airing", and
+        # the episode after it (the next date to show) was never seen.
+        next_air = (json.loads(next_episode_json or "null") or {}).get("air_date")
+        if next_air and age_days != 9999:
+            try:
+                from datetime import timezone
+                next_ts = datetime.strptime(next_air, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
+                if cached_at < next_ts <= time.time():
+                    age_days = 9999
+            except Exception:
+                pass
+
         if age_days > TMDB_METADATA_CACHE_DURATION:
             logger.info(f"TMDB metadata cache expired for {cache_key} ({age_days:.1f}d old)")
             with _db_lock:
