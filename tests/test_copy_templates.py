@@ -254,7 +254,8 @@ class ShareSettingsTests(unittest.TestCase):
         scripts = Scripts()
         scripts.feed(self.html)
         names = ["SHARE_ORIGIN", "SHARE_LEGACY_ORIGIN", "_SHARE_DROP", "shareOrigin",
-                 "buildShareUrl", "isShareUrl", "applyImport", "decodePlaceholders", *extra]
+                 "buildShareUrl", "isShareUrl", "applyImport", "decodePlaceholders",
+                 "_isBoolParam", "shortenParams", "shortenUrl", "expandParams", *extra]
         script = "const source = " + json.dumps(scripts.source) + ";\n"
         script += r"""
             const assert = require('node:assert/strict');
@@ -425,6 +426,7 @@ class ShareSettingsTests(unittest.TestCase):
 
     def test_last_import_drops_marker_and_sensitive_parameters(self):
         self.run_share_js(r"""
+            const serverCaps = {};
             let saved = [];
             function _readUserPresets() { return saved; }
             function _writeUserPresets(value) { saved = value; }
