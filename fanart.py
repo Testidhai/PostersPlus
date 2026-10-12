@@ -34,6 +34,15 @@ def fanart_enabled() -> bool:
 _LANG_FIXUPS = {"cz": "cs"}
 
 
+def _fanart_codes(languages: list[str]) -> list[str]:
+    """*languages* as fanart.tv can match them.  It tags art by language
+    alone, so a regional request (pt-pt, es-mx) takes its base language's
+    art where it stood, as TVDB's lookup does; matching the regional code
+    alone matched nothing and fell through to English."""
+    return list(dict.fromkeys(
+        code.strip().lower().replace("_", "-").split("-", 1)[0] for code in languages if code))
+
+
 async def fanart_poster_url(
     client: httpx.AsyncClient,
     *,
@@ -64,7 +73,7 @@ async def fanart_poster_url(
         urls = pools.get("textless") or []
     else:
         langs = pools.get("langs") or {}
-        urls = next((langs[code] for code in languages if langs.get(code)), [])
+        urls = next((langs[code] for code in _fanart_codes(languages) if langs.get(code)), [])
     if not urls:
         return None
     return random.choice(urls[:_RANDOM_POOL]) if random_top else urls[0]
@@ -173,7 +182,7 @@ async def fanart_background_url(
         urls = pools.get("textless") or []
     else:
         langs = pools.get("langs") or {}
-        urls = next((langs[code] for code in languages if langs.get(code)), [])
+        urls = next((langs[code] for code in _fanart_codes(languages) if langs.get(code)), [])
     if not urls:
         return None
     return random.choice(urls[:_RANDOM_POOL]) if random_top else urls[0]

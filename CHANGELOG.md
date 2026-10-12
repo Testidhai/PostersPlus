@@ -8,10 +8,16 @@
   Portuguese takes the best-rated Portuguese art whatever its region, which
   is usually Brazil's; `pt-pt` takes art tagged for Portugal only, so
   original-art posters stop coming out Brazilian.
+- TVDB keeps Brazil's Portuguese art (`pt`) apart from Portugal's (`por`):
+  Portuguese (Brazil) now gets Brazil's TVDB art instead of Portugal's.
+- fanart.tv tags art by language only, so a regional language (`pt-pt`,
+  `fr-fr`, `es-mx`…) takes its base language's fanart.tv art instead of
+  dropping straight to English.
 - Operators: `TRENDING_MAX_PICKS` (dashboard → Trending, default 8, up to
   30) sets how many catalogs a visitor may pick per list type.
 - Ticking a list in the trending **Configure** dialog counts anywhere inside
   its box; a click on the box's padding used to do nothing.
+  A box that can't be ticked because its type is at the limit is greyed out.
 
 ### Sash dates read word first
 

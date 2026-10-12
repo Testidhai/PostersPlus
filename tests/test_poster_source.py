@@ -148,6 +148,13 @@ class FanartPoolTests(unittest.TestCase):
         self.assertTrue(self._url(client, languages=["cs"]).endswith("/cz.jpg"))
         self.assertEqual(client.calls, 1)  # second lookup served from cache
 
+    def test_a_regional_language_takes_fanarts_base_language_in_its_place(self):
+        client = _Client(_Resp(200, {"movieposter": [
+            _poster("en", 9, "en"), _poster("pt", 2, "pt"), _poster("es", 5, "es"),
+        ]}))
+        self.assertTrue(self._url(client, languages=["pt-pt", "en"]).endswith("/pt.jpg"))
+        self.assertTrue(self._url(client, languages=["fr-fr", "es-mx", "en"]).endswith("/es.jpg"))
+
     def test_random_stays_within_the_top_five(self):
         client = _Client(_Resp(200, {"movieposter": [
             _poster("00", 10 - n, f"p{n}") for n in range(8)

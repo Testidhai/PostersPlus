@@ -377,6 +377,16 @@ class ImageLanguageOrderTests(unittest.TestCase):
         self.assertEqual(order, ["pt-br", "en"])
         self.assertNotIn("pt", order)
 
+    def test_european_portuguese_takes_portugals_art_only(self):
+        # Brazil's art usually out-votes Portugal's, so a bare "pt" (any
+        # region) lands on it; pt-pt must never fall back to that.
+        portugal = {"iso_639_1": "pt", "iso_3166_1": "PT"}
+        brazil = {"iso_639_1": "pt", "iso_3166_1": "BR"}
+        self.assertEqual(_image_language_keys(portugal), ["pt-pt", "pt"])
+        self.assertTrue(_image_matches_language(portugal, "pt-pt"))
+        self.assertFalse(_image_matches_language(brazil, "pt-pt"))
+        self.assertEqual(image_language_order("pt-pt", "en", "native_original"), ["pt-pt", "en"])
+
     def test_brazilian_portuguese_fetch_includes_base_language_for_tmdb(self):
         self.assertEqual(
             _tmdb_include_image_languages("pt-br"),

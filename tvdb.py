@@ -268,10 +268,14 @@ def _to_tvdb_lang(code: str | None) -> str | None:
     their base language (es-mx → spa): a Mexican-Spanish request still wants
     Spanish artwork, and the alternative is matching nothing at all. The strict
     region separation TMDB gives us simply isn't available from this provider.
+    Portuguese is the exception: TVDB keeps Brazil's ("pt") apart from
+    Portugal's ("por"), so pt-br asks for Brazil's and the rest for Portugal's.
     """
     if not code:
         return code
     c = code.strip().lower().replace("_", "-")
+    if c == "pt-br":
+        return "pt"
     base = c.split("-", 1)[0]
     return _LANG_2_TO_3.get(base, base)
 
@@ -962,6 +966,8 @@ async def tvdb_poster(
 
 _RANDOM_POOL = 5
 _LANG_3_TO_2 = {three: two for two, three in _LANG_2_TO_3.items()}
+# The dashboard's names for TVDB's two Portuguese tags (see _to_tvdb_lang).
+_ART_LANG_3_TO_2 = {**_LANG_3_TO_2, "por": "pt-pt", "pt": "pt-br"}
 
 
 def poster_source_enabled() -> bool:
@@ -1044,7 +1050,7 @@ async def artwork_candidates(
             out[kind].append({
                 "path": art["url"],
                 "thumb": art.get("thumb") or art["url"],
-                "language": _LANG_3_TO_2.get(code, code) if code else None,
+                "language": _ART_LANG_3_TO_2.get(code, code) if code else None,
                 "score": art.get("score", 0),
             })
     return out

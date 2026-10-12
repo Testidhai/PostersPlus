@@ -2005,6 +2005,8 @@
   .tl-opt input { accent-color: var(--gold); margin: 0; }
   .tl-opt-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 9px; user-select: none; }
   .tl-opt-name em { font-style: normal; color: var(--text-secondary); }
+  /* A box left unticked once its type is at the limit can't be picked. */
+  .tl-opt-name:has(input:disabled) { cursor: not-allowed; opacity: 0.5; }
   /* Which ticked list posters drawn through the poster URL rank on: only a
      choice once a type has two lists ticked. */
   .tl-rank-rows { display: flex; flex-direction: column; gap: 6px; }
