@@ -106,6 +106,18 @@ class ReturningSeriesTests(unittest.TestCase):
                                seasons=seasons((4, "2026-07-29"), (5, None))),
                          ("Renewed", None, None))
 
+    def test_a_season_released_all_at_once_is_not_airing(self):
+        # Gnomes: all six episodes out on the season's own date.
+        self.assertEqual(
+            facts("Returning Series", last_episode=ep(1, 6, "2026-09-18"),
+                  seasons=[{"season_number": 1, "air_date": "2026-09-18", "episode_count": 6}]),
+            (None, None, None))
+        # A weekly season whose latest episode is the last one listed still airs.
+        self.assertEqual(
+            facts("Returning Series", last_episode=ep(2, 3, "2026-09-18"),
+                  seasons=[{"season_number": 2, "air_date": "2026-09-04", "episode_count": 3}]),
+            ("Airing", None, None))
+
     def test_an_aired_stale_finale_ends_the_run_too(self):
         # Lanterns cached before its finale aired: "next" was the finale.
         self.assertEqual(
@@ -191,7 +203,10 @@ class LabelTests(unittest.TestCase):
         self.assertEqual(release_date_label("2026-09-29", "Airing", today=TODAY), "Sep 29 Airing")
         self.assertEqual(translate_sash("Sep 29 Airing", "en"), "Airing Sep 29")
         self.assertEqual(translate_sash("Sep 29 Airing", None), "Airing Sep 29")
-        self.assertEqual(release_date_label(TODAY.isoformat(), "Airing", today=TODAY), None)
+        # An episode is still to come on its own day; a release has arrived.
+        self.assertEqual(release_date_label(TODAY.isoformat(), "Airing", today=TODAY), "Sep 22 Airing")
+        self.assertIsNone(release_date_label(TODAY.isoformat(), "Cinema", today=TODAY))
+        self.assertIsNone(release_date_label("2026-09-21", "Airing", today=TODAY))
         # Other languages use their own word for Airing in their date order.
         self.assertNotIn("Airing", translate_sash("Sep 29 Airing", "fr-FR"))
 
@@ -287,3 +302,49 @@ class NextEpisodeExpiryTests(unittest.TestCase):
         self._store("tv_2_en_x", today, cached_ago=min(60, since_midnight / 2))
         self.assertIsNone(self.cache.get_cached_tmdb_metadata("tv_1_en_x"))
         self.assertIsNotNone(self.cache.get_cached_tmdb_metadata("tv_2_en_x"))
+
+
+class FollowingEpisodeTests(unittest.TestCase):
+    """TMDB still lists an aired episode as next: the season list has the one after."""
+
+    def setUp(self):
+        import os, tempfile
+        import cache
+        self.cache = cache
+        self._dir = tempfile.TemporaryDirectory()
+        self._saved = (cache.DB_PATH, cache._initialised, getattr(cache._local, "conn", None))
+        cache.DB_PATH = os.path.join(self._dir.name, "cache.db")
+        cache._local.conn = None
+        cache.init_db()
+
+    def tearDown(self):
+        conn = getattr(self.cache._local, "conn", None)
+        if conn is not None:
+            conn.close()
+        self.cache.DB_PATH, self.cache._initialised, self.cache._local.conn = self._saved
+        self._dir.cleanup()
+
+    def test_the_episode_after_the_stale_one(self):
+        import asyncio
+        from datetime import timedelta
+        import httpx
+        import tmdb
+        today = date.today()
+        days = [today - timedelta(days=8), today - timedelta(days=1), today + timedelta(days=6)]
+        calls = []
+
+        def handler(request):
+            calls.append(request.url.path)
+            return httpx.Response(200, json={"episodes": [{"air_date": d.isoformat()} for d in days]})
+
+        async def run():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                stale = ep(2, 2, days[1].isoformat())
+                first = await tmdb.fetch_following_episode_date(client, "290856", "k", stale)
+                again = await tmdb.fetch_following_episode_date(client, "290856", "k", stale)
+                return first, again
+
+        first, again = asyncio.run(run())
+        self.assertEqual(first, days[2].isoformat())
+        self.assertEqual(again, first)
+        self.assertEqual(calls, ["/3/tv/290856/season/2"])   # cached

@@ -391,7 +391,9 @@ def release_date_label(
     if rd is None or not window:
         return None
     today = today or date.today()
-    if rd <= today:
+    # An episode is still to come on its own day ("Airing Oct 12" until it
+    # has gone out); a release is not, it has arrived.
+    if rd < today or (rd == today and window != "Airing"):
         return None
     month = _MONTHS_SHORT[rd.month - 1]
     if (rd - today).days >= 365:
@@ -493,8 +495,19 @@ def tv_release_facts(
     last_season = _episode_season(last_ep) or 0
     # A finale TMDB has marked as one ends the run there: without it a show
     # read Airing for a fortnight after its season was over (Ted Lasso).
+    # So does a season released all at once (Gnomes: six episodes in a day),
+    # which TMDB doesn't mark: its last episode, out on the season's own date.
+    _season_count = _season_episode_count(seasons, _episode_season(last_ep))
+    _season_date = next((s.get("air_date") for s in seasons
+                         if _season_number(s) == _episode_season(last_ep)), None)
+    binge_dropped = (
+        _season_count is not None and _season_count >= 2
+        and (_episode_number(last_ep) or 0) >= _season_count
+        and _season_date is not None and _season_date == _episode_date(last_ep)
+    )
     recent = (last_date is not None and 0 <= (today - last_date).days <= TV_RECENT_EPISODE_DAYS
-              and (last_ep or {}).get("episode_type") not in ("finale", "mid_season"))
+              and (last_ep or {}).get("episode_type") not in ("finale", "mid_season")
+              and not binge_dropped)
 
     if next_date is not None and next_date >= today:
         next_season = _episode_season(next_ep) or last_season

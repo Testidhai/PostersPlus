@@ -3977,6 +3977,54 @@ async def fetch_recent_movie_digital_release_date(
     return digital.isoformat()
 
 
+# A season's episode dates are asked for only while the series details still
+# list an aired episode as next; that lasts hours, so they are kept as long.
+_SEASON_DATES_TTL = 6 * 3600
+
+
+async def fetch_following_episode_date(
+    client: httpx.AsyncClient,
+    tmdb_id: str,
+    tmdb_key: str,
+    next_episode: dict,
+) -> str | None:
+    """The air date of the first episode still to come after *next_episode*,
+    from its season's episode list, or None.
+
+    TMDB's series details call an episode "next" until a while after it has
+    aired (Marshals' Oct 11 episode, the morning after), so the date a
+    viewer wants, the one after it, isn't in them yet.  The season list has
+    it.  One call per series and season while that lasts.
+    """
+    try:
+        season = int(next_episode.get("season_number"))
+    except (TypeError, ValueError):
+        return None
+    after = _parse_tmdb_date(next_episode.get("air_date"))
+    if after is None:
+        return None
+    key = f"tmdb_season_dates:{tmdb_id}:{season}"
+    dates = get_cached_tvdb_json(key)
+    if dates is None:
+        try:
+            logger.info(f"External API Call: TMDB season {season} for series {tmdb_id}")
+            resp = await client.get(
+                f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season}",
+                params={"api_key": tmdb_key}, timeout=15.0,
+            )
+            resp.raise_for_status()
+            dates = {"dates": [e.get("air_date") for e in resp.json().get("episodes") or []
+                               if e.get("air_date")]}
+        except Exception as exc:
+            logger.warning(f"fetch_following_episode_date failed for {tmdb_id} S{season}: {exc}")
+            return None
+        set_cached_tvdb_json(key, dates, _SEASON_DATES_TTL)
+    today = _date.today()
+    following = sorted(d for d in (_parse_tmdb_date(v) for v in dates.get("dates") or [])
+                       if d is not None and d > after and d >= today)
+    return following[0].isoformat() if following else None
+
+
 # The status a movie moves to when each dated window opens — the second half
 # of a dated sash ("Oct 16 Cinema"), so a viewer can tell a theatrical date
 # from one they can actually watch at home.

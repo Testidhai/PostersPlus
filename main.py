@@ -14,7 +14,7 @@ import re
 import time
 import httpx
 import numpy as np
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
@@ -969,7 +969,7 @@ from ratings import (
     _score_color_alt,
     _score_color_metal,
 )
-from tmdb import composite_logo, logo_centre_y, fetch_logo, image_language_order, fetch_poster_metadata, fetch_poster_image, fetch_backdrop_image, fetch_landscape_image, fetch_landscape_crop, fetch_trending_rank_entry, fetch_anime_trending_rank_entry, _expire_overlapping_lists, trending_kind, anime_split, ANIME_ENDPOINTS, ensure_trending_snapshot, fetch_trending_candidates, fetch_popular_candidates, fetch_supplemental_candidates, fetch_catalog_candidates, fetch_release_status, fetch_upcoming_movie_release, fetch_recent_movie_digital_release_date, svg_logo_supported, tmdb_metadata_cache_key, _CROP_VERSION, _fetch_metahub_logo, LOGO_ABS_MAX_H, parse_logo_priority, logo_priority_sources, logo_priority_uses_custom, logo_priority_draws_text, logo_priority_falls_back_to_art, split_logo_priority_at_art, resolve_imdb_to_tmdb, resolve_tmdb_to_imdb, resolve_tvdb_to_tmdb, IdResolveError, TmdbIdGone, tmdb_bearer_auth, tmdb_key_rejected, mark_tmdb_id_gone, tmdb_id_gone, forget_imdb_mapping_to, poster_image_cache_key, backdrop_image_cache_key, trending_source_url, _compute_movie_status_from_dates, _parse_tmdb_date, fetch_badge_facts, fetch_network_logo_path, poster_canvas, set_poster_canvas, POSTER_WIDTHS, fetch_logo_image, logo_language_steps, logo_step_available, _image_matches_language, sanitise_source_url, fetch_cropped_art
+from tmdb import composite_logo, logo_centre_y, fetch_logo, image_language_order, fetch_poster_metadata, fetch_poster_image, fetch_backdrop_image, fetch_landscape_image, fetch_landscape_crop, fetch_trending_rank_entry, fetch_anime_trending_rank_entry, _expire_overlapping_lists, trending_kind, anime_split, ANIME_ENDPOINTS, ensure_trending_snapshot, fetch_trending_candidates, fetch_popular_candidates, fetch_supplemental_candidates, fetch_catalog_candidates, fetch_release_status, fetch_upcoming_movie_release, fetch_following_episode_date, fetch_recent_movie_digital_release_date, svg_logo_supported, tmdb_metadata_cache_key, _CROP_VERSION, _fetch_metahub_logo, LOGO_ABS_MAX_H, parse_logo_priority, logo_priority_sources, logo_priority_uses_custom, logo_priority_draws_text, logo_priority_falls_back_to_art, split_logo_priority_at_art, resolve_imdb_to_tmdb, resolve_tmdb_to_imdb, resolve_tvdb_to_tmdb, IdResolveError, TmdbIdGone, tmdb_bearer_auth, tmdb_key_rejected, mark_tmdb_id_gone, tmdb_id_gone, forget_imdb_mapping_to, poster_image_cache_key, backdrop_image_cache_key, trending_source_url, _compute_movie_status_from_dates, _parse_tmdb_date, fetch_badge_facts, fetch_network_logo_path, poster_canvas, set_poster_canvas, POSTER_WIDTHS, fetch_logo_image, logo_language_steps, logo_step_available, _image_matches_language, sanitise_source_url, fetch_cropped_art
 # How long a poster rendered while its trending list was unreadable is kept:
 # the same as that list's retry cooldown.
 from tmdb import _TRENDING_SOURCE_RETRY_SECS as _TRENDING_UNREAD_TTL
@@ -12224,6 +12224,12 @@ async def get_poster(
             if (rcfg.airing_dates and _release_status == "Airing"
                     and not _upcoming_release_date):
                 _next_air = ((tmdb_data.get("next_episode") or {}).get("air_date")) or None
+                if _stale_next_episode and has_tmdb_id and effective_tmdb_key:
+                    # TMDB still lists the episode that has just aired; the
+                    # season's episode list has the one after it.
+                    _next_air = await fetch_following_episode_date(
+                        client, tmdb_id, effective_tmdb_key, tmdb_data["next_episode"])
+                    _stale_next_episode = _stale_next_episode and not _next_air
                 if _next_air:
                     _upcoming_release_date, _upcoming_release_window = _next_air, "Airing"
         if (rcfg.release_status_dates
@@ -12654,6 +12660,8 @@ async def get_poster(
             # date.today() reads it: UTC's, on a server west of it, came hours
             # early and re-rendered the still-dated poster every minute.
             _dated = _parse_tmdb_date(getattr(discovery_meta, "upcoming_release_date", None))
+            if _dated is not None and getattr(discovery_meta, "upcoming_release_window", None) == "Airing":
+                _dated += timedelta(days=1)   # an episode's date shows through its day
             if _dated is not None:
                 _date_ttl = max(60, int(datetime(_dated.year, _dated.month, _dated.day).timestamp()
                                         - time.time()))
