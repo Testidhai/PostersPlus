@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Portuguese (Portugal) and trending catalog limit
+
+- **Native Language** offers **Portuguese (Portugal)** (`pt-pt`). Plain
+  Portuguese takes the best-rated Portuguese art whatever its region, which
+  is usually Brazil's; `pt-pt` takes art tagged for Portugal only, so
+  original-art posters stop coming out Brazilian.
+- Operators: `TRENDING_MAX_PICKS` (dashboard → Trending, default 8, up to
+  30) sets how many catalogs a visitor may pick per list type.
+- Ticking a list in the trending **Configure** dialog counts anywhere inside
+  its box; a click on the box's padding used to do nothing.
+
 ### Sash dates read word first
 
 - Every dated sash puts its word before the date, as "Streams Oct 23"

@@ -140,8 +140,6 @@ def language_matches(lang: "str | None", langs: "tuple[str, ...]") -> bool:
     if lang is None:
         return False
     return lang in langs or ("non-en" in langs and lang != "en")
-# Catalogs one list type may be picked for.
-MAX_PICKS = 8
 _SERVER_LABEL = "This Instance's List"
 
 _TYPE_ALIASES = {"movie": "movie", "movies": "movie", "tv": "tv", "series": "tv", "show": "tv",
@@ -394,7 +392,7 @@ def _parse(raw: str, base: TrendingLists, _top10_version: int) -> TrendingLists:
             if _ID_RE.match(source) and offered(endpoint, source) and source not in picks:
                 picks.append(source)
         if picks:
-            shown[endpoint] = tuple(picks[:MAX_PICKS])
+            shown[endpoint] = tuple(picks[:config.TRENDING_MAX_PICKS])
     # No catalog picked ranks on the operator's list.
     ranking = {e: (shown[e][0] if shown[e] else base.source(e)) for e in ENDPOINTS}
     plain = all(shown[e] == (ranking[e],) for e in ENDPOINTS)
@@ -439,7 +437,7 @@ def caps() -> dict:
     return {
         "enabled": bool(config.TRENDING_LIST_CHOICE),
         "home_default": base.home,
-        "max_picks": MAX_PICKS,
+        "max_picks": config.TRENDING_MAX_PICKS,
         "languages": [{"id": c, "name": n} for c, n in LANGUAGES],
         # Streaming Top 10: names for "fp_<service>_<iso>" picks; the
         # picker reads which there are from /trending-top10.

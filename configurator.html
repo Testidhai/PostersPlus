@@ -1994,14 +1994,16 @@
   .trending-lists-fields { display: flex; flex-direction: column; gap: 14px; }
   .trending-lists-fields .field { margin: 0; }
   .tl-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+  /* The label fills the box, padding and all, so a click anywhere inside
+     the border ticks it (the padding used to be dead space). */
   .tl-opt {
-    display: flex; align-items: center; gap: 8px; cursor: pointer;
-    padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    display: flex; align-items: stretch;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
     font-size: 12px; color: var(--text-secondary);
   }
   .tl-opt.on { border-color: var(--gold-dim); color: var(--text-primary); }
   .tl-opt input { accent-color: var(--gold); margin: 0; }
-  .tl-opt-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .tl-opt-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 9px; user-select: none; }
   .tl-opt-name em { font-style: normal; color: var(--text-secondary); }
   /* Which ticked list posters drawn through the poster URL rank on: only a
      choice once a type has two lists ticked. */
@@ -2545,6 +2547,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                 <option value="it">Italian ★</option>
                 <option value="pt">Portuguese ★</option>
                 <option value="pt-br">Portuguese (Brazil) ★</option>
+                <option value="pt-pt">Portuguese (Portugal) ★</option>
                 <option value="ja">Japanese</option>
                 <option value="ko">Korean</option>
                 <option value="zh">Chinese</option>
@@ -2635,6 +2638,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                 <option value="it">Italian ★</option>
                 <option value="pt">Portuguese ★</option>
                 <option value="pt-br">Portuguese (Brazil) ★</option>
+                <option value="pt-pt">Portuguese (Portugal) ★</option>
                 <option value="ja">Japanese</option>
                 <option value="ko">Korean</option>
                 <option value="zh">Chinese</option>

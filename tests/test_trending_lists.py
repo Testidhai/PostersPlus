@@ -87,6 +87,14 @@ class ParseTests(_TempDb):
         with mock.patch.object(config, "TRENDING_LIST_CHOICE", False):
             self.assertTrue(trending_lists.parse("m:tmdb_week,h:1").is_default)
 
+    def test_picks_past_the_operators_cap_are_dropped_from_the_end(self):
+        self.assertEqual(trending_lists.parse("m:tmdb.tmdb_week").catalogs("movie"),
+                         ("tmdb", "tmdb_week"))
+        with mock.patch.object(config, "TRENDING_MAX_PICKS", 1):
+            self.assertEqual(trending_lists.parse("m:tmdb_week.tmdb").catalogs("movie"),
+                             ("tmdb_week",))
+            self.assertEqual(trending_lists.caps()["max_picks"], 1)
+
     def test_keys_read_back(self):
         for raw in ("m:tmdb_week", "h:1", "t:tmdb_week,h:1", ""):
             lists = trending_lists.parse(raw)
