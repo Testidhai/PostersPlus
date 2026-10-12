@@ -144,7 +144,8 @@ class LandscapeSplitParamTests(unittest.TestCase):
         no_fallback = re.search(r"const _SHARED_NO_FALLBACK = new Set\(\[(.*?)\]\);", html, re.S).group(1)
         self.assertEqual(sorted(re.findall(r"'([a-z_0-9]+)'", no_fallback)),
                          sorted(["badge_display_mode", *main._LANDSCAPE_OWN_PARAMS]))
-        self.assertEqual(sorted(re.findall(r":\s*'([a-z_0-9]+)'", block)),
+        # A set: both glow colour controls stand for score_glow_color.
+        self.assertEqual(sorted(set(re.findall(r":\s*'([a-z_0-9]+)'", block))),
                          sorted([*main._LANDSCAPE_SPLIT_PARAMS, *main._LANDSCAPE_OWN_PARAMS,
                                  "badge_display_mode"]))
 

@@ -44,7 +44,12 @@ class TableTests(unittest.TestCase):
         self.assertFalse(set(param_aliases.ALIASES) & IDENTITY)
 
     def test_a_landscape_twin_is_its_portrait_name_with_an_underscore(self):
+        # landscape_bar_style's "_bs" was landscape_badge_scale's already, and
+        # a published name never moves.
         for long, short in param_aliases.ALIASES.items():
+            if long == "landscape_bar_style":
+                self.assertEqual(short, "_bars")
+                continue
             if long.startswith("landscape_") and long[10:] in param_aliases.ALIASES:
                 self.assertEqual(short, "_" + param_aliases.ALIASES[long[10:]], long)
 

@@ -83,6 +83,7 @@ Optional parameters control the landscape-specific choices:
 - `landscape_rating_separator=bullet|pip|star|bullet_star` (default `bullet`) is the separator in front of that line's score, as `minimalist_rating_separator` (which takes the same values, default `star`) is on a portrait: `pip` draws the portrait's bar (`Genre • Year | 87`), `star` labels the score as Clean mode does (`Genre • Year ★ 87`), and `bullet_star` does both, a bullet dividing it off and a star labelling it (`Genre • Year • ★ 87`). With rating badges the star gives way to a bullet. The older `landscape_score_star=true` still works and means `star`.
 - `landscape_separator=bullet|pip` (default `bullet`) is the separator between the line's other fields, genre and year, as `minimalist_separator` is on a portrait: `pip` draws the bar (`Genre | Year • 87`). The one in front of the score stays `landscape_rating_separator`'s.
 - `landscape_info_center=true` centres the whole `Genre • Year • Score` line, rating badges included, on the poster in its row (the row `landscape_info_pos` gives it, the bottom one under `auto`), as a portrait's Minimalist `minimalist_center` centres it under the logo. A side logo in the bottom row that would meet it stands above the line's row instead (a narrower one stays on the baseline), where `landscape_info_pos=bottom_center` moves the line into the middle of the room beside the logo; a top-row line pushes aside from a top logo only as far as it must. Off by default.
+- `landscape_rating_mode=line|rating_bar|bar` (default `line`) is the landscape Display Mode. `line` is the `Genre • Year • Score` line. `rating_bar` keeps the line, score included, and also draws the score as a bar along the bottom edge, flush left and as long as the score, as the portrait Rating Bar does; `hide_rating` takes both. `bar` draws the portrait's Bar mode (`rating_display_mode=4`) across the bottom in place of the line (its height scaled up for the shorter canvas), with rating badges from `landscape_rating_badges`; the logo and a bottom badge stand on it. Their settings are landscape's own, read only from the `landscape_`-prefixed names so a portrait's Rating Bar or Bar doesn't restyle them: the Rating Bar's palette and glow (`landscape_score_color_mode`, `landscape_score_custom_palette`, `landscape_score_glow_threshold`, `_blur`, `_alpha`, `_color`; the blur counts in half bar heights here) and the Bar's (`landscape_bar_style`, `_accent`, `_append`, `_score_out_of_10`, `_height_ratio`, `_font_size_ratio`, `_frost_opacity`, `_frost_saturation`). `landscape_frost_reference` falls back to `frost_reference`.
 - `landscape_art_source_movie`, `landscape_art_source_tv` and `landscape_art_source_anime` (each `tmdb|tvdb|fanart|cinemeta`, default `tmdb`) pick the backdrop source for films, series and anime (Japanese animation, or a title requested by an anime id) separately; the older `landscape_art_source` sets all three, and a per-type value beats it. `cinemeta` is Metahub's background, which never carries the title, so it is read with `landscape_art=textless` only (as `tmdb` with `original`) and needs `CINEMETA_ENABLED`. `tvdb` takes the backdrop from TVDB: with `landscape_art=textless` its best background with no language (TVDB's clean art), with `original` its best background in the request's language order, passing over ones TVDB marks as carrying no text. `fanart` takes fanart.tv's most-liked background (clean art) for textless, and for original its most-liked thumb (16:9 key art with the title on) in the request's language order; `fanart_anime` (on the older single parameter) does that for anime only and keeps TMDB's backdrop for everything else. Titles the source has nothing for keep TMDB's backdrop. `tvdb` is offered when the operator turns on `TVDB_POSTER_SOURCE`, the fanart values with `FANART_POSTERS`, and each is read as `tmdb` otherwise.
 - `landscape_anime_provider_art` (`provider|kitsu`, default `provider`) is landscape's Anime Provider Source, for a title requested by an AniList, Kitsu or MAL id that has a TMDB counterpart: `provider` keeps the TMDB backdrop (by `landscape_art_source_anime`), `kitsu` uses the entry's own Kitsu cover (an AniList entry's through the id mapping) when a 16:9 cut of it needs little upscaling and it carries no lettering, with the logo on top, and otherwise keeps the backdrop. The portrait `anime_provider_art` isn't read for landscape.
 - `landscape_poster_pick` (`top|random`, default `top`) is landscape's pick: `random` takes one of the source's top five backdrops (TMDB's, TVDB's or fanart.tv's), fixed until the poster re-renders. Needs the operator's `RANDOM_POSTERS`; the portrait `poster_pick` isn't read for landscape.
@@ -202,10 +203,19 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `landscape_badge_width` | `_bw` |
 | `landscape_badge_x` | `_bx` |
 | `landscape_badge_y` | `_by` |
+| `landscape_bar_accent` | `_ba` |
+| `landscape_bar_append` | `_bap` |
+| `landscape_bar_font_size_ratio` | `_bfsr` |
+| `landscape_bar_frost_opacity` | `_bfo` |
+| `landscape_bar_frost_saturation` | `_bfs` |
+| `landscape_bar_height_ratio` | `_bhr` |
+| `landscape_bar_score_out_of_10` | `_bsoo10` |
+| `landscape_bar_style` | `_bars` |
 | `landscape_bottom_gradient` | `_bgr` |
 | `landscape_bottom_gradient_height` | `_bgh` |
 | `landscape_bottom_gradient_opacity` | `_bgo` |
 | `landscape_color_link` | `_cl` |
+| `landscape_frost_reference` | `_fr` |
 | `landscape_graphic_badges` | `_gb` |
 | `landscape_greyscale` | `_gs` |
 | `landscape_hide_genre` | `_hg` |
@@ -219,8 +229,15 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `landscape_poster_crop` | `_pc` |
 | `landscape_poster_pick` | `_pp` |
 | `landscape_rating_badges` | `_rb` |
+| `landscape_rating_mode` | `_rmo` |
 | `landscape_rating_separator` | `_rs` |
 | `landscape_sash_mode` | `_sm` |
+| `landscape_score_color_mode` | `_scm` |
+| `landscape_score_custom_palette` | `_scp` |
+| `landscape_score_glow_alpha` | `_sga` |
+| `landscape_score_glow_blur` | `_sgb` |
+| `landscape_score_glow_color` | `_sgc` |
+| `landscape_score_glow_threshold` | `_sgt` |
 | `landscape_score_out_of_10` | `_soo10` |
 | `landscape_separator` | `_sep` |
 | `landscape_textless` | `_tx` |

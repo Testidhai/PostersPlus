@@ -2244,6 +2244,13 @@ class RequestConfig:
     # minimalist_separator on a portrait.
     landscape_separator: str = "bullet"
     landscape_info_center: bool = False       # that line centred on the poster, in its row
+    # Landscape's Display Mode: "line" (the "Genre • Year • Score" line) |
+    # "rating_bar" (the line without its score, and the score as a bar along
+    # the bottom edge in the portrait Rating Bar's palette and glow) | "bar"
+    # (portrait's Bar mode, read from the same bar_* settings, in the line's
+    # place).  Its own setting rather than a landscape_ twin of
+    # rating_display_mode, whose default is the portrait Rating Bar.
+    landscape_rating_mode: str = "line"
     # Portrait settings brought to landscape.  Each is a landscape setting of
     # its own, off (or as it was) by default, so a "{shape}" URL's landscape
     # side is unchanged until it asks:
@@ -2415,6 +2422,9 @@ _LANDSCAPE_SPLIT_PARAMS: tuple[str, ...] = (
     "hide_rating",
     "textless",
     "sash_mode",
+    # Kept per shape for the landscape Bar, but falling back to the plain one:
+    # landscape's frosted graphic badges read it before the Bar came over.
+    "frost_reference",
     # Landscape's own graphic badge groups, drawn only with landscape_badge_display_mode=7.
     *graphic_badges.GROUP_PARAMS,
 )
@@ -2445,6 +2455,24 @@ _LANDSCAPE_OWN_PARAMS: tuple[str, ...] = (
     "trending_frost_saturation",
     "trending_label",
     "trending_corner",
+    # The Rating Bar's palette and glow and the Bar's settings, read by
+    # landscape's Display Mode (landscape_rating_mode).  Landscape's own, as
+    # a portrait's Bar or Rating Bar must not restyle the landscape one; the
+    # plain names in a landscape URL were the portrait's until it had them.
+    "score_color_mode",
+    "score_custom_palette",
+    "score_glow_threshold",
+    "score_glow_blur",
+    "score_glow_alpha",
+    "score_glow_color",
+    "bar_style",
+    "bar_accent",
+    "bar_append",
+    "bar_score_out_of_10",
+    "bar_height_ratio",
+    "bar_font_size_ratio",
+    "bar_frost_opacity",
+    "bar_frost_saturation",
 )
 
 
@@ -2814,7 +2842,7 @@ _SIGNATURE_OMIT_AT_DEFAULT = {"poster_width": 500, "rating_badges": "", "rating_
                               "landscape_separator": "bullet",
                               "landscape_badge_text_color": None, "landscape_winner_star": False,
                               "landscape_logo_scale": 1.0, "landscape_rating_badges": False,
-                              "landscape_info_center": False,
+                              "landscape_info_center": False, "landscape_rating_mode": "line",
                               "badge_quality_style": graphic_badges.DEFAULT_QUALITY_STYLE,
                               "badge_cert_style": graphic_badges.DEFAULT_CHIP_STYLE,
                               "badge_logo_style": graphic_badges.DEFAULT_CHIP_STYLE,
@@ -3053,6 +3081,9 @@ def build_request_config(params: dict) -> RequestConfig:
     if (params.get("landscape_separator") or "").strip().lower() == "pip":
         cfg.landscape_separator = "pip"
     cfg.landscape_info_center     = _b("landscape_info_center",     cfg.landscape_info_center)
+    _lrm = (params.get("landscape_rating_mode") or "").strip().lower()
+    if _lrm in ("line", "rating_bar", "bar"):
+        cfg.landscape_rating_mode = _lrm
     cfg.landscape_greyscale       = _b("landscape_greyscale",       cfg.landscape_greyscale)
     _ls_style = (params.get("landscape_badge_style") or "").strip().lower()
     if _ls_style in ("glass", "black", "silver", "gold"):

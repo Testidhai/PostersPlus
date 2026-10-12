@@ -149,6 +149,23 @@ _BADGE_SHADOW_DY    = 0.14   # downward offset, likewise
 
 _INFO_FONT       = 0.058  # "Genre • Year • Score" strip
 
+# Rating Bar (landscape_rating_mode=rating_bar): the score as a progress bar
+# along the bottom edge (the info line still prints it), after the continue-watching cards of the Nuvio
+# tracker — a dark track with a faint top sheen, the fill flush left and
+# rounded off at its leading end.  Edge to edge, so the client's own rounded
+# corners clip it as they clip the art.  Its colours and glow are the portrait
+# Rating Bar's (score_color_mode, score_glow_*).
+_SCORE_BAR_H     = 0.019   # of the height: 5 px on a 265 px tall card
+_SCORE_BAR_TRACK = (0, 0, 0, 115)
+_SCORE_BAR_SHEEN = (255, 255, 255, 31)
+_SCORE_BAR_CAP   = 0.6     # the fill's rounded end, its radius of the bar height
+
+# Bar (landscape_rating_mode=bar): portrait's frosted Bar (bar_style and the
+# rest of its bar_* settings) across the bottom.  Its height is a share of the
+# canvas height, which is 40% shorter here; this brings the default bar's text
+# up to about the info line's size.
+_BAR_SCALE       = 1.3
+
 # Fallback title, used when a title has no logo.  A range rather than a size:
 # it is set as large as fits and stepped down before anything is cut, because a
 # title is content and losing it should be the last resort.  Two lines are
@@ -591,9 +608,12 @@ def _draw_badge(image: Image.Image, text: str, position: str, art: Image.Image,
                 logo_align: str = "left", logo_baseline: int | None = None,
                 logo_box: tuple[int, int, int, int] | None = None,
                 logo_top_row: bool = False,
-                obstacles: tuple = ()) -> None:
+                obstacles: tuple = (), floor: int | None = None) -> None:
+    """``floor`` is the bottom row's baseline when something (the Bar) has
+    raised it; the shared one otherwise."""
     width, height = image.size
     draw = ImageDraw.Draw(image)
+    base = int(height * _BASELINE) if floor is None else floor
     scale, th, pad_x, pad_y, bh = _badge_metrics(cfg, height)
     text = visual(text)
 
@@ -604,7 +624,7 @@ def _draw_badge(image: Image.Image, text: str, position: str, art: Image.Image,
         # rather than as a label that happens to be near some metadata.
         _plain_font = fonts.label_font(max(1, int(height * _INFO_FONT * scale)))
         _px = _slot_x(width, draw.textlength(text, font=_plain_font), logo_align)
-        draw.text((_px, int(height * _BASELINE) if logo_baseline is None else logo_baseline), text,
+        draw.text((_px, base if logo_baseline is None else logo_baseline), text,
                   font=_plain_font, fill=(255, 255, 255, 242), anchor="ls")
         return
 
@@ -623,13 +643,13 @@ def _draw_badge(image: Image.Image, text: str, position: str, art: Image.Image,
     elif position in ("bottom_left", "bottom_right"):
         # Standing on the shared baseline, in from that side.
         x = int(width * _SIDE_PAD) if position == "bottom_left" else width - int(width * _RIGHT_PAD) - bw
-        y = int(height * _BASELINE) - bh
+        y = base - bh
     elif position == "logo":
         # Stacked above the logo, aligned the way it is.  With no logo drawn —
         # original art, which carries its own title treatment — there is nothing
         # to stack on, so the badge takes the logo's slot itself.
         x = _slot_x(width, bw, logo_align)
-        y = (int(height * _BASELINE) if logo_baseline is None else logo_baseline) - bh
+        y = (base if logo_baseline is None else logo_baseline) - bh
         if logo_height:
             y -= logo_height + int(height * 0.045)
     else:  # top_left
@@ -853,6 +873,172 @@ def _draw_title(image: Image.Image, title: str, align: str = "left",
 
     ascent = font.getmetrics()[0]
     return line_h * (len(lines) - 1) + ascent, left, left + int(widest)
+
+
+def _score_value(score) -> int | None:
+    """The weighted score as 0-100, or None for a missing or non-numeric one."""
+    if isinstance(score, bool):
+        return None
+    try:
+        return max(0, min(int(score), 100))
+    except (TypeError, ValueError):
+        return None
+
+
+def _draw_edge_score_bar(image: Image.Image, score, cfg) -> tuple[int, int, int, int] | None:
+    """The Rating Bar: *score* as a fill along the bottom edge (see
+    _SCORE_BAR_H).  Returns the bar's box, or None when there is no score to
+    draw — a missing score draws no empty track, as on a portrait."""
+    from ratings import _soften, score_color_for_mode
+
+    value = _score_value(score)
+    if value is None:
+        return None
+    width, height = image.size
+    bar_h = max(3, round(height * _SCORE_BAR_H))
+    y0 = height - bar_h
+    fill_w = round(width * value / 100)
+    left = right = None
+    if fill_w > 0:
+        left, right = (_soften(c, 0.90) for c in score_color_for_mode(value, cfg.score_color_mode,
+                                                                       cfg.score_custom_palette))
+
+    # The glow goes under the bar: around the fill, as the tracker's
+    # box-shadow, but only past the portrait's threshold and in its colour.
+    # Built as portrait's is (the fill grown by twice the blur, then blurred),
+    # its blur counted in half bar heights rather than pixels, so the
+    # default 1 is the tracker's halo, about the bar's own height.
+    if fill_w > 0 and value >= cfg.score_glow_threshold and cfg.score_glow_alpha > 0 and cfg.score_glow_blur > 0:
+        if cfg.score_glow_color == "match":
+            gc = tuple((left[i] + right[i]) // 2 for i in range(3))
+        elif len(cfg.score_glow_color) == 6:
+            gc = tuple(int(cfg.score_glow_color[i:i + 2], 16) for i in (0, 2, 4))
+        else:
+            gc = (255, 255, 255)
+        sigma = cfg.score_glow_blur * bar_h / 2
+        grow = round(2 * sigma)
+        top = max(0, y0 - grow - int(sigma * 3) - 2)
+        glow = Image.new("RGBA", (width, height - top), (0, 0, 0, 0))
+        ImageDraw.Draw(glow).rounded_rectangle([(0, y0 - grow - top), (fill_w - 1 + grow, height - top - 1 + grow)],
+                                               radius=grow, fill=(*gc, cfg.score_glow_alpha))
+        image.alpha_composite(glow.filter(ImageFilter.GaussianBlur(sigma)), dest=(0, top))
+
+    bar = Image.new("RGBA", (width, bar_h), _SCORE_BAR_TRACK)
+    ImageDraw.Draw(bar).rectangle([(0, 0), (width - 1, max(1, round(bar_h * 0.2)) - 1)],
+                                  fill=_SCORE_BAR_SHEEN)
+    image.alpha_composite(bar, dest=(0, y0))
+    if fill_w > 0:
+        t = np.linspace(0, 1, fill_w, dtype=np.float32)[:, None]
+        row = (np.array(left, np.float32) * (1 - t) + np.array(right, np.float32) * t).astype(np.uint8)
+        grad = Image.fromarray(np.broadcast_to(np.concatenate(
+            [row, np.full((fill_w, 1), 255, np.uint8)], axis=1), (bar_h, fill_w, 4)).copy())
+        if fill_w < width:
+            # Square on the left edge, rounded at its leading end: a pill
+            # mask with its left cap cut away.
+            r = max(1, round(bar_h * _SCORE_BAR_CAP))
+            mask = _cairo_pill_mask(fill_w + r, bar_h, r).crop((r, 0, fill_w + r, bar_h))
+            grad.putalpha(mask)
+        image.alpha_composite(grad, dest=(0, y0))
+    return 0, y0, width, height
+
+
+def _draw_bar(image: Image.Image, cfg, genre_label: str, release_year: str | None, score,
+              sash_label: str | None, rating_items, tint) -> tuple[Image.Image, tuple[int, int, int, int]]:
+    """Portrait's Bar mode across the bottom: its styles, its Append choices
+    and its sliders (bar_*), the bar's height scaled by _BAR_SCALE.  Returns
+    the poster and the bar's box."""
+    from main import _meta_sorted
+    from ratings import draw_frosted_bar, score_color_for_mode
+
+    # The Rating Bar styles draw the score as a fill; with the rating hidden
+    # each falls back to the plain body it is built on, as on a portrait.
+    style = cfg.bar_style
+    if cfg.hide_rating:
+        style = {"rating_frosted": "frosted", "rating_black": "pure_black"}.get(style, style)
+    value = None if cfg.hide_rating else _score_value(score)
+    if value is None:
+        score_str = ""
+    elif cfg.bar_score_out_of_10:
+        score_str = "10" if value >= 100 else f"{value / 10:.1f}"
+    else:
+        score_str = str(value)
+    fields = {"year": release_year or "", "genre": genre_label or "",
+              "rating": f"★ {score_str}" if score_str else ""}
+    keys = {"rating_year": ("year", "genre", "rating"), "rating": ("genre", "rating"),
+            "year": ("year", "genre")}.get(cfg.bar_append)
+    if keys:
+        keys = _meta_sorted(cfg, keys)
+        parts = [fields[k] for k in keys]
+    else:  # "sash"
+        parts = [genre_label or "", sash_label or ""]
+    parts = [p for p in parts if p]
+    sep = "  ·  " if len(parts) <= 2 else " · "
+
+    # Rating badges (landscape_rating_badges) take the "★ score" part's place,
+    # after the rest of the label, as portrait's Bar does: spread across the
+    # bar when nothing else is on it, dropping sites off the end to fit.
+    center_run = None
+    if rating_items and cfg.bar_append in ("rating_year", "rating"):
+        import rating_badges
+        lead_parts = [p for p in parts if not p.startswith("★ ")]
+        lead_sep = "  ·  " if len(lead_parts) + 1 <= 2 else " · "
+
+        def _run(items, font_size):
+            return rating_badges.rating_run(items, font_size, cfg.rating_badge_scale,
+                                            cfg.bar_score_out_of_10, cfg.rating_badge_style)
+
+        def _fit(font_size, measure, budget, lead_w):
+            n = len(rating_items)
+            while True:
+                run = _run(rating_items[:n], font_size)
+                if n <= 1 or lead_w + rating_badges.run_width(run, measure) <= budget:
+                    return run
+                n -= 1
+
+        def center_run(font_size, measure, budget):
+            if not lead_parts:
+                runs = [_run([item], font_size) for item in rating_items]
+                gap = font_size * rating_badges._ENTRY_GAP
+                n = len(runs)
+                while n > 1 and (sum(rating_badges.run_width(r, measure) for r in runs[:n])
+                                 + (n - 1) * gap > budget):
+                    n -= 1
+                return runs[:n]
+            text = ("text", visual(lead_sep.join(lead_parts)))
+            if keys and keys[0] == "rating":
+                tail = [("gap", font_size * 0.62), text]
+                return [_fit(font_size, measure, budget, rating_badges.run_width(tail, measure)) + tail]
+            lead = [text, ("gap", font_size * 0.62)]
+            return [lead + _fit(font_size, measure, budget, rating_badges.run_width(lead, measure))]
+
+    fill_color = None
+    if style in ("rating_black", "rating_frosted") and cfg.bar_accent != "sample":
+        fill_color = {"silver": (210, 210, 218), "gold": (212, 175, 55)}.get(cfg.bar_accent)
+        if fill_color is None:
+            fill_color = (score_color_for_mode(value, 3 if cfg.bar_accent == "palette_custom"
+                                               else int(cfg.bar_accent[-1]), cfg.score_custom_palette)[0]
+                          if value is not None else (210, 210, 218))
+
+    width, height = image.size
+    ratio = cfg.bar_height_ratio * _BAR_SCALE
+    image = draw_frosted_bar(
+        image, left_text="", center_text=sep.join(parts), right_text="",
+        bar_height_ratio=ratio,
+        font_size_ratio=cfg.bar_font_size_ratio,
+        frost_opacity=cfg.bar_frost_opacity,
+        frost_saturation=cfg.bar_frost_saturation,
+        frost_reference=cfg.frost_reference,
+        bottom_inset=cfg.bar_bottom_inset,
+        style=style,
+        score=value,
+        fill_color=fill_color,
+        tint_rgb=tint,
+        center_run=center_run,
+    )
+    # draw_frosted_bar's own geometry, at this canvas's (unscaled) pixels.
+    bar_h = max(24, int(height * ratio))
+    bar_y = height - bar_h - int(height * cfg.bar_bottom_inset)
+    return image, (0, bar_y, width, bar_y + bar_h)
 
 
 def _draw_info_strip(image: Image.Image, genre_label: str,
@@ -1373,6 +1559,8 @@ def _build_landscape(
     # drops a missing one along with its separator, which is exactly the result
     # wanted here, and the same switch reads the same way in either shape.
     def _strip(**where):
+        if rating_mode == "bar":
+            return None
         return _draw_info_strip(
             image,
             "" if cfg.hide_genre else (translate_genre(genre, cfg.label_lang) or genre),
@@ -1396,8 +1584,37 @@ def _build_landscape(
             rating_items = rating_items[:cfg.rating_badge_max]
         rating_items = rating_items or None
 
+    # Display Mode (landscape_rating_mode).  The Rating Bar draws the score
+    # along the bottom edge, the line printing it as well, exactly (Hide
+    # Rating takes both); the Bar
+    # takes the line's place, so the logo stands on the bar instead.  Both
+    # are drawn before the logo and badges, which go over them and keep
+    # clear of them, and after `before`, so the graphic badges do too.
+    rating_mode = getattr(cfg, "landscape_rating_mode", "line")
+    bar_box = None
+    floor = None
+    if rating_mode == "rating_bar":
+        if not cfg.hide_rating:
+            bar_box = _draw_edge_score_bar(image, score, cfg)
+    elif rating_mode == "bar":
+        sash_label = None
+        if cfg.bar_append == "sash" and discovery_meta is not None:
+            picked = pick_sash(discovery_meta, sash_priority)
+            if picked is not None:
+                sash_label = translate_sash(picked[0], cfg.label_lang)
+        tint = badge_source
+        if tint is None and cfg.bar_style in ("frosted", "rating_frosted"):
+            from awards import dominant_frost_rgb
+            tint = tuple(float(c) for c in dominant_frost_rgb(art))
+        image, bar_box = _draw_bar(
+            image, cfg,
+            "" if cfg.hide_genre else (translate_genre(genre, cfg.label_lang) or genre),
+            None if cfg.hide_year or not release_year else native_digits(str(release_year), cfg.label_lang),
+            score, sash_label, rating_items, tint)
+        floor = bar_box[1] - int(height * _STACK_GAP)
+
     info_box = None
-    logo_baseline = None
+    logo_baseline = floor
     logo_scale = max(0.5, min(1.5, float(getattr(cfg, "landscape_logo_scale", 1.0) or 1.0)))
     logo_top = int(height * _BADGE_TOP) if top_row else None
     # The rank mark's corner: a top-row logo or info line on its side hangs
@@ -1508,7 +1725,7 @@ def _build_landscape(
                         source=badge_source,
                         logo_align=align, logo_baseline=logo_baseline,
                         logo_box=logo_box, logo_top_row=top_row,
-                        obstacles=(logo_box, info_box, rank_box))
+                        obstacles=(logo_box, info_box, rank_box, bar_box), floor=floor)
 
     # Drawn last because they lay themselves out around everything else.
     if graphic:

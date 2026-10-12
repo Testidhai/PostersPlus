@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Landscape Rating Bar and Bar
+
+- Landscape has a **Display Mode** of its own in the Rating tab
+  (`landscape_rating_mode`). **Info Line** is the line as it was. **Rating
+  Bar** draws the score as a bar along the bottom edge, in the style of a
+  continue-watching progress bar, in the portrait Rating Bar's palette and
+  glow; the line still prints the score. **Bar** is the portrait's Bar mode
+  across the bottom, with its styles, Append choices and sliders, and the
+  logo stands on it. Each shape keeps its own palette, glow and Bar
+  settings.
+- The configurator hides options that do nothing in the current setup:
+  **Order** lists only the fields the mode prints (Clean has no year), and
+  one of each pair of orders that would draw the same; the Colour Palette
+  only where it colours something (Minimalist's Year layout); score out of
+  10 where a number is printed; Rating Separator choices that rating badges
+  replace; the Bar's Colour Saturation and Reference Colour on its black
+  styles; and empty graphic badge groups' placement and size.
+
 ### Age rating by country
 
 - The graphic badges' **Certificate** can show any country's age rating

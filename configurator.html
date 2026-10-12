@@ -2803,9 +2803,9 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
         <!-- 2. RATING / GENRE LABEL -->
         <div class="section" data-tab="rating">
           <div class="section-body">
-            <div class="portrait-only">
+            <div id="rating-mode-group">
             <span class="group-title">Mode</span>
-            <div class="field">
+            <div class="field portrait-only">
               <label class="field-label">Display Mode</label>
               <select id="cfg-rating-mode" onchange="updateRatingFields(); build(); queuePreviewReload()">
                 <option value="0">Hidden</option>
@@ -2814,6 +2814,18 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                 <option value="3">Minimalist</option>
                 <option value="4">Bar</option>
               </select>
+            </div>
+            <!-- Landscape's own: the info line, or a portrait mode ported over.
+                 The Rating Bar and Bar read the portrait's palette, glow and
+                 Bar settings below, which show here for them. -->
+            <div class="field landscape-only">
+              <label class="field-label" data-tip="Info Line prints the genre, year and score as one line. Rating Bar keeps the line and also draws the score as a bar along the bottom edge, coloured from the palette and glowing past the threshold below. Bar is the portrait's Bar mode across the bottom, the logo standing on it.">Display Mode</label>
+              <select class="segmented-source" id="cfg-landscape-rating-mode" onchange="updateRatingFields(); updateLandscapeLogoFields(); build(); queuePreviewReload()">
+                <option value="line" selected>Info Line</option>
+                <option value="rating_bar">Rating Bar</option>
+                <option value="bar">Bar</option>
+              </select>
+              <div class="segmented" data-for="cfg-landscape-rating-mode"></div>
             </div>
             <div id="rating-alt-colors-toggle">
               <div class="field">
@@ -2835,12 +2847,12 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                         placeholder="One score:hex per line.&#10;The highest threshold below the rating wins.&#10;&#10;0:#FF5050&#10;50:#FFD25A&#10;70:#78FFA0&#10;85:#BE8CFF"
                         oninput="build(); queuePreviewReload()"></textarea>
             </div>
-            </div><!-- /portrait-only mode group -->
+            </div><!-- /mode group -->
 
-            <div class="cfg-sep portrait-only" id="rating-style-group">
+            <div class="cfg-sep" id="rating-style-group">
               <span class="group-title">Style</span>
               <div id="rating-mode1-fields">
-                <div class="field">
+                <div class="field portrait-only">
                   <label class="field-label" data-tip="What to append after the genre.">Label Suffix</label>
                   <select id="cfg-bar-append" onchange="updateRatingFields(); build(); queuePreviewReload()">
                     <option value="0" selected>Year</option>
@@ -2848,7 +2860,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                     <option value="2">Year + Info sash</option>
                   </select>
                 </div>
-                <div class="field">
+                <div class="field portrait-only">
                   <label class="field-label" data-tip="Hex colour for the genre/rating text. Leave blank for the mode default.">Text Colour</label>
                   <div class="color-field">
                     <input type="text" id="cfg-rtc-m1" placeholder="Default" maxlength="6"                         oninput="_syncRtcM(1); build(); queuePreviewReload()">
@@ -2872,21 +2884,21 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                            oninput="document.getElementById('cfg-glow-color').value=this.value.slice(1).toUpperCase(); build(); queuePreviewReload()">
                   </div>
                 </div>
-                <div class="field">
+                <div class="field portrait-only">
                   <label class="field-label">Font Size</label>
                   <div class="range-row">
                     <input type="range" id="cfg-font-mode1" min="0.04" max="0.16" step="0.005" value="0.08" oninput="updateRange(this,'rng-font1'); build(); queuePreviewReload()">
                     <span class="range-val" id="rng-font1">0.08</span>
                   </div>
                 </div>
-                <div class="field">
+                <div class="field portrait-only">
                   <label class="field-label">Font Position</label>
                   <div class="range-row">
                     <input type="range" id="cfg-y-mode1" min="0.70" max="0.98" step="0.01" value="0.90" oninput="updateRange(this,'rng-y1'); build(); queuePreviewReload()">
                     <span class="range-val" id="rng-y1">0.90</span>
                   </div>
                 </div>
-                <div class="field">
+                <div class="field portrait-only">
                   <label class="field-label">Bar Position</label>
                   <div class="range-row">
                     <input type="range" id="cfg-bar-bottom" min="0.00" max="0.20" step="0.005" value="0.04" oninput="updateRange(this,'rng-bb'); build(); queuePreviewReload()">
@@ -3008,7 +3020,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                     <option value="sash">Info Sash</option>
                   </select>
                 </div>
-                <div class="field">
+                <div class="field portrait-only">
                   <label class="field-label" data-tip="Hex colour for the genre/rating text. Leave blank for the mode default.">Text Colour</label>
                   <div class="color-field">
                     <input type="text" id="cfg-rtc-m4" placeholder="Default" maxlength="6"                         oninput="_syncRtcM(4); build(); queuePreviewReload()">
@@ -3053,7 +3065,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
               </div>
             </div><!-- /rating-style-group -->
 
-            <div class="cfg-sep portrait-only" id="rating-glow-fields">
+            <div class="cfg-sep" id="rating-glow-fields">
               <span class="group-title">Glow</span>
               <div class="field">
                 <label class="field-label">Score Glow Threshold</label>
@@ -3083,7 +3095,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                  Order and Hide switches. -->
             <div class="cfg-sep" id="rating-labels-group">
               <span class="group-title">Labels</span>
-              <div class="field landscape-only">
+              <div class="field landscape-only" id="landscape-info-pos-field">
                 <label class="field-label" data-tip="Where the genre, year and score line goes. Auto places it against the logo: across from a bottom logo, under a centred one, and in the bottom row on a top logo's side. Put it in the logo's own spot and the two stack. A long line drops its genre first rather than run into the logo.">Placement</label>
                 <select class="segmented-source" id="cfg-landscape-info-row" onchange="updateLandscapeLogoFields(); build(); queuePreviewReload()">
                   <option value="auto" selected>Auto</option>
@@ -3102,7 +3114,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
               </div>
               <div class="field" id="meta-order-field">
                 <label class="field-label" data-tip="The order the genre, year and rating are printed in, in every mode and shape that prints more than one of them. A field a mode doesn't print is skipped. Default keeps each mode's own order. In Minimalist's Split layout the rating keeps its own margin: the right one, or the left one when it comes first.">Order</label>
-                <select id="cfg-meta-order" onchange="build(); queuePreviewReload()">
+                <select id="cfg-meta-order" onchange="_updateLabelRows(); build(); queuePreviewReload()">
                   <option value="" selected>Default</option>
                   <option value="genre,year,rating">Genre · Year · Rating</option>
                   <option value="genre,rating,year">Genre · Rating · Year</option>
@@ -3112,7 +3124,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                   <option value="rating,year,genre">Rating · Year · Genre</option>
                 </select>
               </div>
-              <div class="field landscape-only">
+              <div class="field landscape-only" id="landscape-sep-field">
                 <label class="field-label" data-tip="Glyph between the genre and the year, as Minimalist's Separator is on a portrait. The one in front of the score is Rating Separator's.">Separator</label>
                 <select class="segmented-source" id="cfg-landscape-sep" onchange="build(); queuePreviewReload()">
                   <option value="bullet" selected>Bullet</option>
@@ -3130,7 +3142,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                 </select>
                 <div class="segmented" data-for="cfg-landscape-rating-sep"></div>
               </div>
-              <div class="field landscape-only">
+              <div class="field landscape-only" id="landscape-info-scale-field">
                 <label class="field-label" data-tip="Size of the genre, year and score line, 1.00 being the tuned size. It grows up and away from its corner; if it would reach the logo, the genre is dropped first.">Info Size</label>
                 <div class="range-row">
                   <input type="range" id="cfg-landscape-info-scale" min="0.60" max="2.00" step="0.05" value="1.00" oninput="updateRange(this,'rng-lis'); build(); queuePreviewReload()">
@@ -3161,7 +3173,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
               <div class="toggle-row" id="hide-genre-row">
                 <span class="toggle-label" data-tip="Removes the genre text and its associated spacers.">Hide Genre</span>
                 <label class="toggle-switch">
-                  <input type="checkbox" id="tog-hide-genre" onchange="build(); queuePreviewReload()">
+                  <input type="checkbox" id="tog-hide-genre" onchange="updateRatingFields(); build(); queuePreviewReload()">
                   <div class="toggle-track"><div class="toggle-thumb"></div></div>
                 </label>
               </div>
@@ -5400,8 +5412,12 @@ function gbRender() {
       el.value = v;
       updateRange(el, `rng-${rng}${g}`);
     });
+    // A group with no badge in it has nothing to place or size: its controls
+    // come back once a badge below is put in it.
+    const used = Object.values(st.assign).includes(g);
+    document.getElementById(`gb-anchor-${g}`).closest('.field').style.display = used ? '' : 'none';
     document.getElementById(`gb-layout-${g}`).style.display =
-      vEl('cfg-badge-display-mode') === '7' ? '' : 'none';
+      vEl('cfg-badge-display-mode') === '7' && used ? '' : 'none';
     ['x', 'y'].forEach((axis, k) => {
       const el = document.getElementById(`gb-${axis}-${g}`);
       el.value = grp.xy[k];
@@ -7216,6 +7232,41 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
   // renders: plain for portrait, "landscape_"-prefixed for landscape.  A
   // "{shape}" URL carries both, which is the only way one URL can give the 16:9
   // slot its tinted band while the 2:3 slot keeps its own vignette.
+  // The score's palette and glow and the Bar's settings, as the rating mode
+  // *mode* (portrait's numbering; landscape's Rating Bar is 1, its Bar 4)
+  // reads them, from one shape's values *v*, under *prefix*.
+  function emitRatingStyle(v, prefix, mode) {
+    const on  = id => v[id] === true || v[id] === 'true';
+    const set = (key, value) => params.set(prefix + key, value);
+    const int = id => parseInt(v[id], 10) || 0;
+    const fix = (id, d) => Number(v[id]).toFixed(d);
+    // The palette, for the modes whose bar or separator is coloured by it.
+    if (mode === 1 || mode === 3) set('score_color_mode', int('cfg-score-color-mode'));
+    if (mode === 1) {
+      set('score_glow_threshold', int('cfg-glow-thresh'));
+      set('score_glow_blur',      int('cfg-glow-blur'));
+      set('score_glow_alpha',     int('cfg-glow-alpha'));
+      const gm = v['cfg-glow-color-mode'], hex = (v['cfg-glow-color'] || '').trim();
+      if (gm === 'match') set('score_glow_color', 'match');
+      else if (gm === 'custom' && /^[0-9a-fA-F]{6}$/.test(hex)) set('score_glow_color', hex);
+    }
+    const ratingFill = ['rating_black', 'rating_frosted'].includes(v['cfg-bar-style']);
+    if (mode === 4) {
+      set('bar_style', v['cfg-bar-style'] || 'frosted');
+      if (ratingFill) set('bar_accent', v['cfg-bar-accent'] || 'silver');
+      set('bar_append',           v['cfg-bar4-append'] || 'rating_year');
+      set('bar_score_out_of_10',  on('tog-bar-score-10') ? 'true' : 'false');
+      set('bar_height_ratio',     fix('cfg-bar-height', 3));
+      set('bar_font_size_ratio',  fix('cfg-bar-font', 2));
+      set('bar_frost_opacity',    fix('cfg-bar-frost', 2));
+      set('bar_frost_saturation', fix('cfg-bar-frost-sat', 2));
+    }
+    const custom = ((mode === 1 || mode === 3) && int('cfg-score-color-mode') === 3)
+      || (mode === 4 && ratingFill && v['cfg-bar-accent'] === 'palette_custom');
+    const palette = normaliseCustomPalette(v['cfg-score-custom-palette'] || '');
+    if (custom && palette) set('score_custom_palette', palette);
+  }
+
   function emitShared(v, prefix) {
     const on  = id => v[id] === true || v[id] === 'true';
     const num = id => Number(v[id]).toFixed(2);
@@ -7322,6 +7373,14 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
     if (_lrsep !== 'bullet') params.set('landscape_rating_separator', _lrsep);
     if (vEl('cfg-landscape-sep') === 'pip') params.set('landscape_separator', 'pip');
     if (c('tog-landscape-info-center')) params.set('landscape_info_center', 'true');
+    // Display Mode.  The Rating Bar and the Bar have landscape's own palette,
+    // glow and Bar settings (emitRatingStyle).
+    const _lrm = vEl('cfg-landscape-rating-mode') || 'line';
+    if (_lrm !== 'line') params.set('landscape_rating_mode', _lrm);
+    emitRatingStyle(lShared, 'landscape_', { rating_bar: 1, bar: 4 }[_lrm] || 0);
+    // Written in both states: an absent one falls back to the portrait's.
+    // Landscape's frosted graphic badges read it too, whatever the mode.
+    params.set('landscape_frost_reference', lShared['tog-bar-frost-reference'] === true ? 'true' : 'false');
     // Portrait settings brought over; each left out at its default.
     if (c('tog-landscape-greyscale')) params.set('landscape_greyscale', 'true');
     const _lbStyle = vEl('cfg-landscape-badge-style') || 'glass';
@@ -7402,24 +7461,14 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
   // ── Rating / Genre Label ───────────────────────────────────────────────────
   if (emitAll) params.set('rating_display_mode', ratingMode);
   // Global frosted colour mode (bar, notch and sash share it).
-  if (emitAll && c('tog-bar-frost-reference')) params.set('frost_reference', 'true');
+  if (emitAll && pShared['tog-bar-frost-reference'] === true) params.set('frost_reference', 'true');
   if (emitAll && ratingMode !== 0) {
-    // Colour palette: exposed for the modes whose pip/score colour visibly uses it
-    if (ratingMode === 1 || ratingMode === 3) {
-      params.set('score_color_mode', ni('cfg-score-color-mode'));
-    }
+    emitRatingStyle(pShared, '', ratingMode);
     if (ratingMode === 1) {
       params.set('accent_bar_font_size_ratio', n('cfg-font-mode1').toFixed(3));
       params.set('accent_bar_y_offset',        n('cfg-y-mode1').toFixed(2));
       params.set('accent_bar_append_mode',     ni('cfg-bar-append'));
       params.set('accent_bar_bottom_ratio',    n('cfg-bar-bottom').toFixed(3));
-      params.set('score_glow_threshold', ni('cfg-glow-thresh'));
-      params.set('score_glow_blur',      ni('cfg-glow-blur'));
-      params.set('score_glow_alpha',     ni('cfg-glow-alpha'));
-      const _glowMode = vEl('cfg-glow-color-mode');
-      if (_glowMode === 'match') params.set('score_glow_color', 'match');
-      else if (_glowMode === 'custom' && /^[0-9a-fA-F]{6}$/.test(vEl('cfg-glow-color')))
-        params.set('score_glow_color', vEl('cfg-glow-color'));
     } else if (ratingMode === 2) {
       params.set('numeric_score_font_size_ratio', n('cfg-font-mode2').toFixed(3));
       params.set('numeric_score_y_offset',        n('cfg-y-mode2').toFixed(2));
@@ -7440,17 +7489,6 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
       params.set('minimalist_center',              c('tog-minimalist-center') ? 'true' : 'false');
       params.set('minimalist_separator',           vEl('cfg-min-separator') || 'pip');
       params.set('minimalist_rating_separator',    vEl('cfg-min-rating-separator') || 'star');
-    } else if (ratingMode === 4) {
-      params.set('bar_style',           vEl('cfg-bar-style') || 'frosted');
-      const _bs = vEl('cfg-bar-style') || '';
-      if (_bs === 'rating_black' || _bs === 'rating_frosted')
-        params.set('bar_accent', vEl('cfg-bar-accent') || 'silver');
-      params.set('bar_append',          vEl('cfg-bar4-append') || 'rating_year');
-      params.set('bar_score_out_of_10', c('tog-bar-score-10') ? 'true' : 'false');
-      params.set('bar_height_ratio',    n('cfg-bar-height').toFixed(3));
-      params.set('bar_font_size_ratio', n('cfg-bar-font').toFixed(2));
-      params.set('bar_frost_opacity',   n('cfg-bar-frost').toFixed(2));
-      params.set('bar_frost_saturation', n('cfg-bar-frost-sat').toFixed(2));
     }
     // Rating badges: the Rating Bar has no printed score to put them on.
     if (ratingMode !== 1 && vEl('cfg-rating-badges')) {
@@ -7462,13 +7500,6 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
       if (vEl('cfg-rating-badge-scale') === 'normalized') params.set('rating_badge_scale', 'normalized');
       if (vEl('cfg-rating-badge-style') === 'mono') params.set('rating_badge_style', 'mono');
     }
-    const _usesCustomPalette =
-      ((ratingMode === 1 || ratingMode === 3) && ni('cfg-score-color-mode') === 3) ||
-      (ratingMode === 4 &&
-       (vEl('cfg-bar-style') === 'rating_black' || vEl('cfg-bar-style') === 'rating_frosted') &&
-       vEl('cfg-bar-accent') === 'palette_custom');
-    const _customPalette = normaliseCustomPalette();
-    if (_usesCustomPalette && _customPalette) params.set('score_custom_palette', _customPalette);
     const _rtcEl = document.getElementById('cfg-rtc-m' + ratingMode);
     const _rtc = _rtcEl ? _rtcEl.value.trim() : '';
     if (/^[0-9a-fA-F]{6}$/i.test(_rtc)) params.set('rating_text_color', _rtc);
@@ -8661,9 +8692,16 @@ function updateTrendingStyleFields() {
 // a score, and landscape's own switch.
 function updateRatingBadgeRows() {
   const hideRating = c('tog-hide-rating');
-  const shown = c('tog-landscape') ? c('tog-landscape-rating-badges') : _ratingLabelParts().badges;
+  const parts = _ratingLabelParts();
+  const shown = c('tog-landscape') ? c('tog-landscape-rating-badges') && parts.badges : parts.badges;
   document.getElementById('rating-badges-fields').style.display = (shown && !hideRating) ? '' : 'none';
-  document.getElementById('landscape-rating-badges-row').style.display = hideRating ? 'none' : '';
+  // The landscape Bar puts them only where its label carries the score.
+  document.getElementById('landscape-rating-badges-row').style.display = (hideRating || !parts.badges) ? 'none' : '';
+  // Badges stand in for the score's ★: the landscape Rating Separator's
+  // Star and Bullet + Star then draw a bullet, and Minimalist's has nothing
+  // in front of the score to style at all (see _updateMinimalistRows).
+  const lBadges = c('tog-landscape-rating-badges') && !!vEl('cfg-rating-badges');
+  _hideOptions('cfg-landscape-rating-sep', lBadges ? ['star', 'bullet_star'] : []);
 }
 
 // The text colour is the dark pills'; the glass picks its own ink.
@@ -8884,18 +8922,31 @@ function _updateBarRatingRows() {
   // A frosted notch owns the frosted colour controls (its own toggle + slider),
   // so they live in the Sash panel then and hide here. Otherwise they live in
   // Rating. The saturation slider also hides when Reference Colour is on.
-  const frostedNotch = vEl('cfg-sash-mode') === 'notch' && vEl('cfg-sash-badge-style') === 'frosted';
+  // Landscape has no notch, so its Bar keeps them.  Both only tint a frosted
+  // body: the black ones have no colour to take.
+  const frostedNotch = !c('tog-landscape') && vEl('cfg-sash-mode') === 'notch' && vEl('cfg-sash-badge-style') === 'frosted';
+  const frostedBody = s === 'frosted' || s === 'rating_frosted';
   const ref = c('tog-bar-frost-reference');
-  document.getElementById('bar-reference-row').style.display = frostedNotch ? 'none' : '';
-  document.getElementById('bar-saturation-field').style.display = (frostedNotch || ref) ? 'none' : '';
+  document.getElementById('bar-reference-row').style.display = (frostedNotch || !frostedBody) ? 'none' : '';
+  document.getElementById('bar-saturation-field').style.display = (frostedNotch || ref || !frostedBody) ? 'none' : '';
+}
+
+// Whether the Colour Palette colours anything: the Rating Bar's fill, or
+// Minimalist's genre | year separator, which only its Year layout draws in
+// the score's colour, and only with both of them there.
+function _paletteUsed() {
+  const mode = _effRatingMode();
+  if (c('tog-hide-rating')) return false;
+  if (mode === 1) return true;
+  return mode === 3 && (parseInt(vEl('cfg-min-append') || '0') === 0)
+    && !c('tog-hide-genre') && !c('tog-hide-year');
 }
 
 function updateCustomPaletteFields() {
-  const mode = parseInt(document.getElementById('cfg-rating-mode').value);
+  const mode = _effRatingMode();
   // The palette picker itself hides with the rating, so the textarea that
   // belongs to its Custom option has to go too.
-  const scoreCustom = (mode === 1 || mode === 3) && !c('tog-hide-rating')
-    && ni('cfg-score-color-mode') === 3;
+  const scoreCustom = _paletteUsed() && ni('cfg-score-color-mode') === 3;
   const barCustom = mode === 4 && !c('tog-hide-rating')
     && (vEl('cfg-bar-style') === 'rating_black' || vEl('cfg-bar-style') === 'rating_frosted')
     && vEl('cfg-bar-accent') === 'palette_custom';
@@ -8978,13 +9029,37 @@ const _SHARED_PARAM = {
   'cfg-trending-frost-sat':     'trending_frost_saturation',
   'tog-trending-label':         'trending_label',
   'tog-trending-corner':        'trending_corner',
+  // The Rating Bar's palette and glow and the Bar's settings, which the
+  // landscape Display Mode reads too.  Landscape never falls back to the
+  // portrait's.  Both glow colour controls stand for score_glow_color (see
+  // _sharedFromParams); the hex one last, so _SHARED_ID names it.
+  'cfg-score-color-mode':       'score_color_mode',
+  'cfg-score-custom-palette':   'score_custom_palette',
+  'cfg-glow-thresh':            'score_glow_threshold',
+  'cfg-glow-blur':              'score_glow_blur',
+  'cfg-glow-alpha':             'score_glow_alpha',
+  'cfg-glow-color-mode':        'score_glow_color',
+  'cfg-glow-color':             'score_glow_color',
+  'cfg-bar-style':              'bar_style',
+  'cfg-bar-accent':             'bar_accent',
+  'cfg-bar4-append':            'bar_append',
+  'tog-bar-score-10':           'bar_score_out_of_10',
+  'cfg-bar-height':             'bar_height_ratio',
+  'cfg-bar-font':               'bar_font_size_ratio',
+  'cfg-bar-frost':              'bar_frost_opacity',
+  'cfg-bar-frost-sat':          'bar_frost_saturation',
+  // Falls back to the plain one: landscape's frosted chips read it before.
+  'tog-bar-frost-reference':    'frost_reference',
 };
 const _SHARED_NO_FALLBACK = new Set(['badge_display_mode',
   'top_gradient', 'top_gradient_opacity', 'top_gradient_height',
   'bottom_gradient', 'bottom_gradient_opacity', 'bottom_gradient_height',
   'top_vignette_sash_only', 'vignette_poster_color_top',
   'trending_style', 'trending_scale', 'trending_side', 'trending_sash', 'trending_ribbon_style',
-  'trending_frost_opacity', 'trending_frost_saturation', 'trending_label', 'trending_corner']);
+  'trending_frost_opacity', 'trending_frost_saturation', 'trending_label', 'trending_corner',
+  'score_color_mode', 'score_custom_palette', 'score_glow_threshold', 'score_glow_blur', 'score_glow_alpha',
+  'score_glow_color', 'bar_style', 'bar_accent', 'bar_append', 'bar_score_out_of_10', 'bar_height_ratio',
+  'bar_font_size_ratio', 'bar_frost_opacity', 'bar_frost_saturation']);
 const _SHAPE_SHARED = Object.keys(_SHARED_PARAM);
 const _SHARED_ID = Object.fromEntries(Object.entries(_SHARED_PARAM).map(([id, param]) => [param, id]));
 const _LANDSCAPE_SHARED_DEFAULTS = {
@@ -9001,6 +9076,11 @@ const _LANDSCAPE_SHARED_DEFAULTS = {
   'cfg-trending-sash': 'keep', 'cfg-trending-ribbon-style': 'charcoal',
   'cfg-trending-frost-opacity': '0.75', 'cfg-trending-frost-sat': '1.20',
   'tog-trending-label': false, 'tog-trending-corner': false,
+  'cfg-score-color-mode': '2', 'cfg-score-custom-palette': '', 'cfg-glow-thresh': '85', 'cfg-glow-blur': '1',
+  'cfg-glow-alpha': '40', 'cfg-glow-color-mode': 'white', 'cfg-glow-color': '',
+  'cfg-bar-style': 'frosted', 'cfg-bar-accent': 'silver', 'cfg-bar4-append': 'rating_year', 'tog-bar-score-10': false,
+  'cfg-bar-height': '0.080', 'cfg-bar-font': '0.55', 'cfg-bar-frost': '0.85', 'cfg-bar-frost-sat': '1.20',
+  'tog-bar-frost-reference': false,
 };
 const SHAPE_STASH_KEY = 'postersplus_shape_stash';
 let _shapeStash = { portrait: null, landscape: null };   // null = that shape's defaults
@@ -9032,6 +9112,9 @@ function _writeShared(values) {
     const v = values[id];
     _setEl(id, typeof v === 'boolean' ? String(v) : v);
   }
+  // The notch's Reference Colour is the same setting as the Bar's.
+  _setEl('tog-sash-frost-reference', String(c('tog-bar-frost-reference')));
+  updateGlowColorField();
 }
 function _sharedDefaults(shape) {
   if (shape === 'landscape') return _LANDSCAPE_SHARED_DEFAULTS;
@@ -9055,7 +9138,16 @@ function _sharedFromParams(p, shape) {
     const twin = shape === 'landscape' ? p.get('landscape_' + param) : null;
     const raw  = (shape === 'landscape' && _SHARED_NO_FALLBACK.has(param)) ? twin : twin ?? p.get(param);
     const el  = document.getElementById(id);
+    if (param === 'score_glow_color') {
+      // One parameter, two controls: White / Match / Custom, and the hex.
+      const gc = (raw || '').trim();
+      const hex = /^[0-9a-fA-F]{6}$/.test(gc);
+      out[id] = id === 'cfg-glow-color-mode' ? (gc.toLowerCase() === 'match' ? 'match' : hex ? 'custom' : defaults[id])
+                                             : (hex ? gc.toUpperCase() : defaults[id]);
+      continue;
+    }
     if (raw === null || raw === undefined || !el) { out[id] = defaults[id]; continue; }
+    if (el.tagName === 'TEXTAREA') { out[id] = raw; continue; }
     if (el.type === 'checkbox') {
       out[id] = !['0', 'false', 'no'].includes(raw.trim().toLowerCase());
     } else if (el.tagName === 'SELECT') {
@@ -9146,10 +9238,9 @@ function updateShapeFields() {
   // Hide Rating is kept per shape and the stash writes it back without firing
   // its change handler, so the rows it hides in the Rating tab are re-derived
   // on the way back in — otherwise they would still show landscape's answer.
-  if (!landscape) updateRatingFields();
-  _updateLabelRows();
-  document.getElementById('landscape-score10-row').style.display = c('tog-hide-rating') ? 'none' : '';
-  document.getElementById('landscape-rating-sep-field').style.display = c('tog-hide-rating') ? 'none' : '';
+  // Each shape's Display Mode picks the style controls on show, so this runs
+  // for either.
+  updateRatingFields();
   updateRatingBadgeRows();
   updateLandscapeBadgeFields();
   // There is no diagonal sash or notch in landscape, only the badge: the mode
@@ -9399,7 +9490,9 @@ function _updateMinimalistRows() {
   // Year (0), Both (2) and Split (3) draw the genre|year separator; Rating (1)
   // and Both draw the one before the score.
   const showField  = isMinimal && append !== 1;
-  const showRating = isMinimal && !hideRating && (append === 1 || both);
+  // Rating badges stand where the score's separator would, so it has nothing
+  // left to style.
+  const showRating = isMinimal && !hideRating && (append === 1 || both) && !vEl('cfg-rating-badges');
   const field  = document.getElementById('minimalist-separator-field');
   const rating = document.getElementById('minimalist-rating-separator-field');
   if (field)  field.style.display  = showField  ? '' : 'none';
@@ -9410,16 +9503,28 @@ function _updateMinimalistRows() {
   // again — there is nothing for it to be told apart from.
   const fl = document.getElementById('minimalist-separator-label');
   const rl = document.getElementById('minimalist-rating-separator-label');
-  const named = both && !hideRating;
+  const named = both && showRating;
   if (fl) fl.textContent = named ? 'Genre / Year'  : 'Separator';
   if (rl) rl.textContent = named ? 'Year / Rating' : 'Separator';
+}
+
+// The portrait mode whose style controls the view on screen uses: portrait's
+// Display Mode, or the one a landscape Display Mode ports (Rating Bar 1,
+// Bar 4).  The landscape info line is 0, as it uses none of them.
+function _effRatingMode() {
+  if (!c('tog-landscape')) return parseInt(document.getElementById('cfg-rating-mode').value);
+  return { rating_bar: 1, bar: 4 }[vEl('cfg-landscape-rating-mode')] || 0;
 }
 
 // What each portrait mode's label actually carries, so the Labels switches
 // and the score-only controls show only where they change something.  Mirrors
 // the label building in main._build_poster.
 function _ratingLabelParts() {
-  const mode = parseInt(document.getElementById('cfg-rating-mode').value);
+  // The landscape line, also drawn in Rating Bar mode, prints all three; its
+  // Bar is portrait's Bar mode (4) below.
+  if (c('tog-landscape') && vEl('cfg-landscape-rating-mode') !== 'bar')
+    return { genre: true, year: true, score: true, badges: true, barScore: false, printedScore: true };
+  const mode = _effRatingMode();
   const minAppend = parseInt(vEl('cfg-min-append') || '0');
   const barAppend = vEl('cfg-bar4-append') || 'rating_year';
   const accentAppend = parseInt(vEl('cfg-bar-append') || '0');
@@ -9450,21 +9555,61 @@ function _ratingLabelParts() {
 function _updateLabelRows() {
   const landscape = c('tog-landscape');
   const parts = _ratingLabelParts();
-  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = (landscape || on) ? '' : 'none'; };
+  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
   show('hide-genre-row', parts.genre);
   show('hide-year-row', parts.year);
   show('hide-rating-row', parts.score);
   show('hide-unreleased-rating-row', parts.score);
-  // Only where a mode prints two of the three (the Rating Bar's score is the
-  // bar itself, not part of the line).
-  const printed = [parts.genre, parts.year, parts.printedScore].filter(Boolean).length;
-  show('meta-order-field', printed >= 2);
+  // What is left on the line once the Hide switches have had their say (the
+  // Rating Bar's score is the bar itself, not part of the line).
+  const printed = { genre: parts.genre && !c('tog-hide-genre'), year: parts.year && !c('tog-hide-year'),
+                    rating: parts.printedScore && !c('tog-hide-rating') };
+  // Order only changes anything with two of the three printed, and then only
+  // between the orders that put those two differently: each option is named
+  // for what it does here, and one of each pair that would do the same is
+  // left out.  The choice itself is kept, and stays on show while chosen.
+  const shown = Object.keys(printed).filter(k => printed[k]);
+  show('meta-order-field', shown.length >= 2);
+  const sel = document.getElementById('cfg-meta-order');
+  const NAMES = { genre: 'Genre', year: 'Year', rating: 'Rating' };
+  // Minimalist's Split hangs the rating off a margin of its own: the left
+  // one when it comes first, the right one otherwise, wherever else it is.
+  const split = !landscape && _effRatingMode() === 3 && vEl('cfg-min-append') === '3';
+  const effect = o => {
+    const ks = o.value.split(',').filter(k => printed[k]);
+    if (!split || !ks.includes('rating')) return ks.join(',');
+    const rest = ks.filter(k => k !== 'rating');
+    return (ks[0] === 'rating' ? ['rating', ...rest] : [...rest, 'rating']).join(',');
+  };
+  const chosen = sel.selectedOptions[0];
+  const seen = new Set(chosen && chosen.value ? [effect(chosen)] : []);
+  for (const o of sel.options) {
+    if (!o.value) continue;
+    o.textContent = effect(o).split(',').map(k => NAMES[k]).join(' · ');
+    const dup = o !== chosen && seen.has(effect(o));
+    seen.add(effect(o));
+    o.hidden = dup;
+    o.disabled = dup;
+  }
   const group = document.getElementById('rating-labels-group');
   if (group) group.style.display = (landscape || parts.genre) ? '' : 'none';
 }
 
+// Hides the options of a select (and its segmented buttons) in *values*,
+// other than the one chosen: they do nothing in the current setup.
+function _hideOptions(id, values) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  for (const o of sel.options) {
+    const hide = values.includes(o.value) && o.value !== sel.value;
+    o.hidden = hide;
+    document.querySelectorAll(`.segmented[data-for="${id}"] .segmented-opt[data-value="${o.value}"]`)
+      .forEach(btn => { btn.style.display = hide ? 'none' : ''; });
+  }
+}
+
 function updateRatingFields() {
-  const mode = parseInt(document.getElementById('cfg-rating-mode').value);
+  const mode = _effRatingMode();
   // Hide Rating takes the score out of whichever mode is drawing it, so every
   // control that only styles the score goes with it: the glow (which is the
   // score bar's own), the palette the score is coloured from, and the out-of-10
@@ -9476,10 +9621,11 @@ function updateRatingFields() {
   document.getElementById('rating-mode3-fields').style.display      = mode === 3 ? '' : 'none';
   document.getElementById('rating-mode4-fields').style.display      = mode === 4 ? '' : 'none';
   document.getElementById('rating-glow-fields').style.display       = (mode === 1 && !hideRating) ? '' : 'none';
-  document.getElementById('rating-alt-colors-toggle').style.display = ((mode === 1 || mode === 3) && !hideRating) ? '' : 'none';
+  document.getElementById('rating-alt-colors-toggle').style.display = _paletteUsed() ? '' : 'none';
   document.getElementById('numeric-score10-row').style.display      = (mode === 2 && !hideRating) ? '' : 'none';
-  document.getElementById('minimalist-score10-row').style.display   = (mode === 3 && !hideRating) ? '' : 'none';
   const labelParts = _ratingLabelParts();
+  // Year layout prints no number, only its colour (unless the year is hidden).
+  document.getElementById('minimalist-score10-row').style.display   = (mode === 3 && !hideRating && labelParts.printedScore) ? '' : 'none';
   document.getElementById('bar-score10-row').style.display          = (labelParts.barScore && !hideRating) ? '' : 'none';
   updateRatingBadgeRows();
   document.getElementById('rating-badge-scale-field').style.display = vEl('cfg-rating-badges') ? '' : 'none';
@@ -9487,8 +9633,13 @@ function updateRatingFields() {
   document.getElementById('rating-badge-max-field').style.display =
     ratingBadgeSources(vEl('cfg-rating-badges')).length > 1 ? '' : 'none';
   document.getElementById('rating-badge-style-field').style.display = vEl('cfg-rating-badges') ? '' : 'none';
-  document.getElementById('landscape-score10-row').style.display    = hideRating ? 'none' : '';
-  document.getElementById('landscape-rating-sep-field').style.display = hideRating ? 'none' : '';
+  // The line's own controls, which the Bar replaces.  (The Rating Bar's line
+  // still prints the score.)
+  const lMode = vEl('cfg-landscape-rating-mode') || 'line';
+  document.getElementById('landscape-score10-row').style.display    = (hideRating || lMode === 'bar') ? 'none' : '';
+  document.getElementById('landscape-rating-sep-field').style.display = (hideRating || lMode === 'bar') ? 'none' : '';
+  for (const id of ['landscape-info-pos-field', 'landscape-sep-field', 'landscape-info-scale-field', 'landscape-info-center-row'])
+    document.getElementById(id).style.display = lMode === 'bar' ? 'none' : '';
   _updateMinimalistRows();
   // Hidden mode has no per-mode fields, so the Style group would otherwise be
   // a heading and a rule with nothing under them.
@@ -9968,7 +10119,8 @@ const _LANDSCAPE_ONLY_CONTROLS = ['cfg-landscape-art', ...LANDSCAPE_SOURCE_IDS, 
                                   'cfg-landscape-badge-shape', 'cfg-landscape-badge-case',
                                   'tog-landscape-winner-star', 'cfg-landscape-logo-scale',
                                   ...Object.keys(LANDSCAPE_BADGE_TUNING),
-                                  'tog-landscape-rating-badges', 'tog-landscape-poster-crop'];
+                                  'tog-landscape-rating-badges', 'tog-landscape-poster-crop',
+                                  'cfg-landscape-rating-mode'];
 // Everything both shapes read, or that a preset never carries (identity and
 // keys — settingsOnly leaves them alone in any case).
 const _BOTH_SHAPES_CONTROLS = new Set([
@@ -10408,6 +10560,8 @@ function importUrl(urlStr, { silent = false, settingsOnly = false, preserveClien
         : (!['', '0', 'false', 'no'].includes((p.get('landscape_score_star') || '').trim().toLowerCase()) ? 'star' : 'bullet')); }
     _setEl('cfg-landscape-sep', (p.get('landscape_separator') || '').toLowerCase() === 'pip' ? 'pip' : 'bullet');
     _setEl('tog-landscape-info-center', p.get('landscape_info_center') || 'false');
+    { const _lrm = (p.get('landscape_rating_mode') || '').toLowerCase();
+      _setEl('cfg-landscape-rating-mode', ['rating_bar', 'bar'].includes(_lrm) ? _lrm : 'line'); }
     { const _llp = (p.get('landscape_logo_pos') || 'left').toLowerCase();
       _setEl('cfg-landscape-logo-row', _llp.startsWith('top_') ? 'top' : 'bottom');
       _setEl('cfg-landscape-logo-pos', ['left', 'center', 'right'].includes(_llp.replace('top_', '')) ? _llp.replace('top_', '') : 'left');
