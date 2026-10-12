@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Stroom {day} {month}",
     "releaseMonthStreaming": "Stroom {month} {year}",
+    "releaseDayAiring": "Word uitgesaai {day} {month}",
+    "releaseMonthAiring": "Word uitgesaai {month} {year}",
     "New Season": "Nuwe seisoen",
     "Returning": "Keer terug",
     "Physical": "Fisiese uitgawe",

@@ -1931,8 +1931,11 @@ def get_cached_tmdb_metadata(cache_key: str) -> dict | None:
         if next_air and age_days != 9999:
             try:
                 from datetime import timezone
-                next_ts = datetime.strptime(next_air, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
-                if cached_at < next_ts <= time.time():
+                # Whole days: a row cached on the air day itself (TMDB still
+                # calls that episode "next" until it has gone out) expires once
+                # the day is over, without refetching on every request that day.
+                day_end = datetime.strptime(next_air, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() + 86400
+                if cached_at < day_end <= time.time():
                     age_days = 9999
             except Exception:
                 pass

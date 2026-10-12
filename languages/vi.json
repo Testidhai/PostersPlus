@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month}/{year}",
     "releaseDayStreaming": "Trực tuyến {day}/{month}",
     "releaseMonthStreaming": "Trực tuyến {month}/{year}",
+    "releaseDayAiring": "Đang phát sóng {day}/{month}",
+    "releaseMonthAiring": "Đang phát sóng {month}/{year}",
     "New Season": "Mùa mới",
     "Returning": "Trở lại",
     "Physical": "Bản đĩa",

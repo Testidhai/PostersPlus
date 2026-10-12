@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Streaming {day} {month}",
     "releaseMonthStreaming": "Streaming {month} {year}",
+    "releaseDayAiring": "Προβάλλεται {day} {month}",
+    "releaseMonthAiring": "Προβάλλεται {month} {year}",
     "New Season": "Νέα σεζόν",
     "Returning": "Επιστρέφει",
     "Physical": "Φυσική έκδοση",

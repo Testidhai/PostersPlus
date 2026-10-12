@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Dijital {day} {month}",
     "releaseMonthStreaming": "Dijital {month} {year}",
+    "releaseDayAiring": "Yayında {day} {month}",
+    "releaseMonthAiring": "Yayında {month} {year}",
     "New Season": "Yeni sezon",
     "Returning": "Geri dönüyor",
     "Physical": "Fiziksel sürüm",

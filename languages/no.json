@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Strømming {day}. {month}",
     "releaseMonthStreaming": "Strømming {month} {year}",
+    "releaseDayAiring": "Sendes nå {day}. {month}",
+    "releaseMonthAiring": "Sendes nå {month} {year}",
     "New Season": "Ny sesong",
     "Returning": "Kommer tilbake",
     "Physical": "Fysisk utgivelse",

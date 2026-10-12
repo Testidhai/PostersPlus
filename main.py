@@ -1912,6 +1912,7 @@ class RequestConfig:
     cinema_greyscale_without_sash: bool = False
     release_status_cinema_only: bool = False  # only show release status when "Cinema"
     release_status_dates: bool = True   # "Oct 16 Cinema" instead of Cinema / Production when TMDB has dated it
+    airing_dates:        bool = False   # "Airing Oct 15": an airing show's next episode date
     badge_display_mode:  int  = field(default_factory=lambda: _cfg.BADGE_DISPLAY_MODE)
     rating_display_mode: int  = field(default_factory=lambda: _cfg.SHOW_RATING_DISPLAY_MODE)
 
@@ -2822,7 +2823,7 @@ _LANDSCAPE_BADGE_TUNING: dict[str, tuple[float, float]] = {
     "landscape_badge_y":             (-0.07, 0.30),
 }
 
-_SIGNATURE_OMIT_AT_DEFAULT = {"poster_width": 500, "rating_badges": "", "rating_badge_scale": "native",
+_SIGNATURE_OMIT_AT_DEFAULT = {"poster_width": 500, "airing_dates": False, "rating_badges": "", "rating_badge_scale": "native",
                               "trending_list": "",
                               "rating_badge_style": "color",
                               "cinema_greyscale_without_sash": False, "trending_style": "sash",
@@ -2987,6 +2988,7 @@ def build_request_config(params: dict) -> RequestConfig:
     cfg.cinema_greyscale_without_sash = _b("cinema_greyscale_without_sash", cfg.cinema_greyscale_without_sash)
     cfg.release_status_cinema_only = _b("release_status_cinema_only", cfg.release_status_cinema_only)
     cfg.release_status_dates    = _b("release_status_dates",   cfg.release_status_dates)
+    cfg.airing_dates            = _b("airing_dates",           cfg.airing_dates)
     cfg.muted                   = _b("muted",                  cfg.muted)
     cfg.score_out_of_10         = _b("score_out_of_10",        cfg.score_out_of_10)
     cfg.textless                = _b("textless",               cfg.textless)
@@ -12208,6 +12210,14 @@ async def get_poster(
             # Worked out with the status, from the same episode data — no call.
             _upcoming_release_date = _tv_upcoming_date
             _upcoming_release_window = _tv_upcoming_window
+            # Opt-in: a show on air wears its next episode's date ("Airing
+            # Oct 15"), the nearest thing a poster has to a calendar.  A
+            # passed or same-day date is dropped by release_date_label.
+            if (rcfg.airing_dates and _release_status == "Airing"
+                    and not _upcoming_release_date):
+                _next_air = ((tmdb_data.get("next_episode") or {}).get("air_date")) or None
+                if _next_air:
+                    _upcoming_release_date, _upcoming_release_window = _next_air, "Airing"
         if (rcfg.release_status_dates
                 and _release_status in ("Cinema", "Production")
                 and type not in ("tv", "series")
@@ -12628,6 +12638,17 @@ async def get_poster(
                 _ttl_override = (
                     _status_ttl if _ttl_override is None
                     else min(_ttl_override, _status_ttl)
+                )
+            # A dated sash ("Airing Oct 15", "Oct 16 Cinema") is dropped on its
+            # day (release_date_label), so the poster printing it lasts no
+            # longer than that: an Airing render is otherwise kept three days,
+            # past a weekly episode's date.
+            _dated = _parse_tmdb_date(getattr(discovery_meta, "upcoming_release_date", None))
+            if _dated is not None:
+                _date_ttl = max(60, int(datetime(_dated.year, _dated.month, _dated.day,
+                                                 tzinfo=timezone.utc).timestamp() - time.time()))
+                _ttl_override = (
+                    _date_ttl if _ttl_override is None else min(_ttl_override, _date_ttl)
                 )
             # The trending list could not be read (twice), so this render may be
             # missing a rank it should show.  A lookup that did read the list

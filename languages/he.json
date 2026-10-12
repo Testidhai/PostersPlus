@@ -37,6 +37,8 @@
     "releaseMonth": "{window} ב{month} {year}",
     "releaseDayStreaming": "זמין ב-{day} ב{month}",
     "releaseMonthStreaming": "זמין ב{month} {year}",
+    "releaseDayAiring": "בשידור ב-{day} ב{month}",
+    "releaseMonthAiring": "בשידור ב{month} {year}",
     "New Season": "עונה חדשה",
     "Returning": "חוזרת",
     "Physical": "פיזי",

@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Suoratoisto {day}. {month}",
     "releaseMonthStreaming": "Suoratoisto {month} {year}",
+    "releaseDayAiring": "Esityksessä {day}. {month}",
+    "releaseMonthAiring": "Esityksessä {month} {year}",
     "New Season": "Uusi kausi",
     "Returning": "Palaa",
     "Physical": "Fyysinen julkaisu",

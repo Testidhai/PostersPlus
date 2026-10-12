@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Streaming {day}. {month}",
     "releaseMonthStreaming": "Streaming {month} {year}",
+    "releaseDayAiring": "Emitira se {day}. {month}",
+    "releaseMonthAiring": "Emitira se {month} {year}",
     "New Season": "Nova sezona",
     "Returning": "Vraća se",
     "Physical": "Fizičko izdanje",

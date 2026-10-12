@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Penstriman {day} {month}",
     "releaseMonthStreaming": "Penstriman {month} {year}",
+    "releaseDayAiring": "Sedang bersiaran {day} {month}",
+    "releaseMonthAiring": "Sedang bersiaran {month} {year}",
     "New Season": "Musim baharu",
     "Returning": "Kembali",
     "Physical": "Edisi fizikal",

@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Streaming {day} {month}",
     "releaseMonthStreaming": "Streaming {month} {year}",
+    "releaseDayAiring": "Sedang tayang {day} {month}",
+    "releaseMonthAiring": "Sedang tayang {month} {year}",
     "New Season": "Musim baru",
     "Returning": "Kembali",
     "Physical": "Edisi fisik",

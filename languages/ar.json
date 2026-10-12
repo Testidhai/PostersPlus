@@ -38,6 +38,8 @@
     "releaseMonth": "{window} في {month} {year}",
     "releaseDayStreaming": "متاح في {day} {month}",
     "releaseMonthStreaming": "متاح في {month} {year}",
+    "releaseDayAiring": "يُعرض الآن في {day} {month}",
+    "releaseMonthAiring": "يُعرض الآن في {month} {year}",
     "New Season": "موسم جديد",
     "Returning": "عائد",
     "Physical": "على أقراص",

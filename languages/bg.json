@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Стрийминг {day} {month}",
     "releaseMonthStreaming": "Стрийминг {month} {year}",
+    "releaseDayAiring": "В ефир {day} {month}",
+    "releaseMonthAiring": "В ефир {month} {year}",
     "New Season": "Нов сезон",
     "Returning": "Завръща се",
     "Physical": "На носител",

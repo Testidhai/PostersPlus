@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Streaming {day}. {month}",
     "releaseMonthStreaming": "Streaming {month} {year}",
+    "releaseDayAiring": "Vysiela sa {day}. {month}",
+    "releaseMonthAiring": "Vysiela sa {month} {year}",
     "New Season": "Nová séria",
     "Returning": "Vracia sa",
     "Physical": "Fyzické vydanie",

@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {year} {month}",
     "releaseDayStreaming": "Streaming {month} {day}.",
     "releaseMonthStreaming": "Streaming {year} {month}",
+    "releaseDayAiring": "Műsoron {month} {day}.",
+    "releaseMonthAiring": "Műsoron {year} {month}",
     "New Season": "Új évad",
     "Returning": "Visszatér",
     "Physical": "Fizikai kiadás",

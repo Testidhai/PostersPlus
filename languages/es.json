@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Streaming {day} {month}",
     "releaseMonthStreaming": "Streaming {month} {year}",
+    "releaseDayAiring": "En emisión {day} {month}",
+    "releaseMonthAiring": "En emisión {month} {year}",
     "New Season": "Nueva temporada",
     "Returning": "Regresa",
     "Physical": "Formato físico",

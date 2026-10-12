@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Next episode date on Airing
+
+- **Release Status: Next Episode Date** (`airing_dates=true`, off by
+  default) dates a series that is on air with its next episode: `Airing
+  Oct 15`. TMDB sends the date with the series details, so it costs no
+  extra API calls. With a list of the shows you watch, the posters work as
+  a simple airing calendar.
+- A season that premiered shortly after a show's details were cached read
+  as an undated **Renewed** for up to a week, and on the premiere day
+  itself, instead of **Airing**. A series' cached details now refresh as
+  soon as its next episode airs.
+
 ### Landscape Rating Bar and Bar
 
 - Landscape has a **Display Mode** of its own in the Rating tab

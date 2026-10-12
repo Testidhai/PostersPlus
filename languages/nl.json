@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Streaming {day} {month}",
     "releaseMonthStreaming": "Streaming {month} {year}",
+    "releaseDayAiring": "Loopt nu {day} {month}",
+    "releaseMonthAiring": "Loopt nu {month} {year}",
     "New Season": "Nieuw seizoen",
     "Returning": "Keert terug",
     "Physical": "Op disc",

@@ -37,6 +37,8 @@
     "releaseMonth": "{month} {year} {window}",
     "releaseDayStreaming": "{day} {month} Mtandaoni",
     "releaseMonthStreaming": "{month} {year} Mtandaoni",
+    "releaseDayAiring": "{day} {month} Inaonyeshwa",
+    "releaseMonthAiring": "{month} {year} Inaonyeshwa",
     "New Season": "Msimu mpya",
     "Returning": "Inarudi",
     "Physical": "Nakala halisi",

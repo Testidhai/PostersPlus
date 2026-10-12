@@ -40,7 +40,7 @@ _NOM_SEP = " • "
 # "releaseDay<Window>" / "releaseMonth<Window>", for when the plain status
 # word reads badly with a date — English dates Streaming as "Streams Sep 29".
 _RELEASE_DATE_RE = re.compile(
-    r"^([A-Z][a-z]{2}) (\d{1,2}|\d{4}) (Cinema|Streaming|Physical|Premiere|Returns|Season \d+)$"
+    r"^([A-Z][a-z]{2}) (\d{1,2}|\d{4}) (Cinema|Streaming|Physical|Premiere|Returns|Airing|Season \d+)$"
 )
 _SEASON_WINDOW_RE = re.compile(r"^Season (\d+)$")
 _MONTHS_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",

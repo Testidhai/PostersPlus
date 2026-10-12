@@ -38,6 +38,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "پخش آنلاین {day} {month}",
     "releaseMonthStreaming": "پخش آنلاین {month} {year}",
+    "releaseDayAiring": "در حال پخش {day} {month}",
+    "releaseMonthAiring": "در حال پخش {month} {year}",
     "New Season": "فصل جدید",
     "Returning": "ادامه‌دار",
     "Physical": "نسخه فیزیکی",

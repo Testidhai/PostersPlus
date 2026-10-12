@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "Streaming {day} {month}",
     "releaseMonthStreaming": "Streaming {month} {year}",
+    "releaseDayAiring": "În difuzare {day} {month}",
+    "releaseMonthAiring": "În difuzare {month} {year}",
     "New Season": "Sezon nou",
     "Returning": "Revine",
     "Physical": "Ediție fizică",

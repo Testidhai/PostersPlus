@@ -37,6 +37,8 @@
     "releaseMonth": "{window} {month} {year}",
     "releaseDayStreaming": "اسٹریمنگ {day} {month}",
     "releaseMonthStreaming": "اسٹریمنگ {month} {year}",
+    "releaseDayAiring": "نشر جاری {day} {month}",
+    "releaseMonthAiring": "نشر جاری {month} {year}",
     "New Season": "نیا سیزن",
     "Returning": "جاری",
     "Physical": "فزیکل ریلیز",

@@ -168,6 +168,19 @@ class LabelTests(unittest.TestCase):
         self.assertEqual(translate_sash("Dec 25 Premiere", "pt-BR"), "Estreia 25 Dez")
         self.assertEqual(translate_sash("Renewed", "it"), "Rinnovata")
 
+    def test_the_next_episode_date_on_airing(self):
+        # airing_dates: the window is the status itself, read first in English.
+        self.assertEqual(release_date_label("2026-09-29", "Airing", today=TODAY), "Sep 29 Airing")
+        self.assertEqual(translate_sash("Sep 29 Airing", "en"), "Airing Sep 29")
+        self.assertEqual(translate_sash("Sep 29 Airing", None), "Airing Sep 29")
+        self.assertEqual(release_date_label(TODAY.isoformat(), "Airing", today=TODAY), None)
+        # Other languages use their own word for Airing in their date order.
+        self.assertNotIn("Airing", translate_sash("Sep 29 Airing", "fr-FR"))
+
+    def test_airing_dates_is_off_by_default_and_parses(self):
+        self.assertFalse(main.RequestConfig().airing_dates)
+        self.assertTrue(main.build_request_config({"airing_dates": "true"}).airing_dates)
+
 
 class SlotTests(unittest.TestCase):
     def test_renewed_is_a_release_status_slot(self):
@@ -211,7 +224,7 @@ class NextEpisodeExpiryTests(unittest.TestCase):
         self.cache.DB_PATH, self.cache._initialised, self.cache._local.conn = self._saved
         self._dir.cleanup()
 
-    def _store(self, key, next_air):
+    def _store(self, key, next_air, cached_ago=3 * 86400):
         import time
         self.cache.set_cached_tmdb_metadata(
             key, "T", "2020", [18], True, "/p.jpg", [], original_title="T", vote_count=10,
@@ -221,7 +234,7 @@ class NextEpisodeExpiryTests(unittest.TestCase):
         # Cached three days ago.
         self.cache.get_db().execute(
             "UPDATE tmdb_metadata_cache SET cached_at = ? WHERE cache_key = ?",
-            (time.time() - 3 * 86400, key))
+            (time.time() - cached_ago, key))
         self.cache.get_db().commit()
 
     def test_rows_expire_when_the_next_episode_airs(self):
@@ -233,4 +246,16 @@ class NextEpisodeExpiryTests(unittest.TestCase):
         with mock.patch.object(self.cache, "invalidate_final_posters") as inv:
             self.assertIsNone(self.cache.get_cached_tmdb_metadata("tv_1_en_x"))
             inv.assert_called_once_with("1", "tv")
+        self.assertIsNotNone(self.cache.get_cached_tmdb_metadata("tv_2_en_x"))
+
+    def test_a_row_cached_on_the_air_day_expires_the_day_after(self):
+        # Elsbeth was cached at 13:32 on its premiere day, with that premiere
+        # still TMDB's "next" episode.
+        from datetime import datetime, timedelta, timezone
+        import time
+        today = datetime.now(timezone.utc).date()
+        since_midnight = time.time() % 86400
+        self._store("tv_1_en_x", today - timedelta(days=1), cached_ago=since_midnight + 3600)
+        self._store("tv_2_en_x", today, cached_ago=min(60, since_midnight / 2))
+        self.assertIsNone(self.cache.get_cached_tmdb_metadata("tv_1_en_x"))
         self.assertIsNotNone(self.cache.get_cached_tmdb_metadata("tv_2_en_x"))
