@@ -401,6 +401,16 @@ def release_date_label(
     return f"{month} {rd.day} {window}"
 
 
+def premiered_label(premiere_date: str | None, *, today: date | None = None) -> str | None:
+    """"Oct 2 Premiered" for a series' first air date that has arrived, the
+    past-tense twin of release_date_label's "Dec 25 Premiere"; None for one
+    still to come or absent.  (Translated word-first: "Premiered Oct 2".)"""
+    rd = _parse_date(premiere_date)
+    if rd is None or rd > (today or date.today()):
+        return None
+    return f"{_MONTHS_SHORT[rd.month - 1]} {rd.day} Premiered"
+
+
 def season_window(season: int) -> str:
     """The *window* half of a series release label for a season premiere."""
     return "Premiere" if season <= 1 else f"Season {season}"
@@ -695,6 +705,9 @@ class DiscoveryMeta:
     # treatment, cache tiers and slot matching.
     upcoming_release_date: str | None = None
     upcoming_release_window: str | None = None
+    # The first air date behind is_premiere, printed on its sash ("Premiered
+    # Oct 2"); the caller clears it when dates are off.
+    premiere_date: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -833,6 +846,7 @@ def extract_discovery_meta(
     tmdb_release_date = tmdb_data.get("tmdb_release_date") or release_date
     if is_tv and _is_recent(tmdb_release_date):
         meta.is_premiere = True
+        meta.premiere_date = tmdb_release_date
 
     if is_tv:
         next_ep = tmdb_data.get("next_episode") or None
@@ -1006,7 +1020,9 @@ def _evaluate_slot(slot: str, meta: DiscoveryMeta) -> str | None:
         return "Returning" if meta.is_returning else None
 
     if slot == "premiere":
-        return "Premiere" if meta.is_premiere else None
+        if not meta.is_premiere:
+            return None
+        return premiered_label(meta.premiere_date) or "Premiere"
 
     if slot == "just_added":
         return "Just Added" if meta.is_just_added else None

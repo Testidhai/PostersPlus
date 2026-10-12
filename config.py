@@ -1111,7 +1111,6 @@ SASH_PRIORITY: list[str] = [
     # notable-cast match can't bury "this is new right now".
     "trending",
     "trending_broad",
-    "premiere",
     "new_release",
     "just_added",
     "new_season",
@@ -1132,6 +1131,10 @@ SASH_PRIORITY: list[str] = [
     # they sit last and only surface when nothing above did.
     "returning",
     "airing",
+    # Under Airing, which dates a new series' next episode ("Airing Oct 15");
+    # Premiere ("Premiered Oct 2") shows when nothing is airing, as when a
+    # whole season came out at once.
+    "premiere",
     "cancelled",
     "ended",
     "physical",

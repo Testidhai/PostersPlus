@@ -308,9 +308,9 @@ class ReleaseDateTranslationTests(unittest.TestCase):
     def setUpClass(cls):
         load_languages()
 
-    def test_english_passes_through(self):
-        self.assertEqual(translate_sash("Oct 16 Cinema", "en"), "Oct 16 Cinema")
-        self.assertEqual(translate_sash("Dec 2027 Cinema", None), "Dec 2027 Cinema")
+    def test_english_reads_the_word_first(self):
+        self.assertEqual(translate_sash("Oct 16 Cinema", "en"), "Cinema Oct 16")
+        self.assertEqual(translate_sash("Dec 2027 Cinema", None), "Cinema Dec 2027")
 
     def test_english_dates_streaming_as_streams(self):
         self.assertEqual(translate_sash("Sep 29 Streaming", "en"), "Streams Sep 29")

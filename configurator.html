@@ -3608,7 +3608,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                 </label>
               </div>
               <div class="toggle-row" id="sash-release-dates-row">
-                <span class="toggle-label" data-tip="When TMDB has a release date for a movie that is in cinemas or in production, the sash shows it and what it opens instead of the status — “Oct 16 Cinema”, “Streams Oct 23”, or “Dec 2027 Cinema” when it is a year or more away. In cinemas, the date is the next digital or disc release; in production, the first release anywhere.">Release Status: Show Date</span>
+                <span class="toggle-label" data-tip="When TMDB has a release date for a movie that is in cinemas or in production, the sash shows it and what it opens instead of the status — “Cinema Oct 16”, “Streams Oct 23”, or “Cinema Dec 2027” when it is a year or more away. In cinemas, the date is the next digital or disc release; in production, the first release anywhere. Series are dated the same way (“Premieres Dec 25”, “Season 3 Mar 4”), and the Premiere sash shows when a new series started (“Premiered Oct 2”).">Release Status: Show Date</span>
                 <label class="toggle-switch">
                   <input type="checkbox" id="tog-release-dates" checked onchange="updateSashBadgeFields(); build(); queuePreviewReload()">
                   <div class="toggle-track"><div class="toggle-thumb"></div></div>
@@ -4680,7 +4680,6 @@ const SASH_SLOTS = [
   // notable-cast match can't bury "this is new right now".
   { id:'trending',       label:'TMDB Trending Top {{TRENDING_FETCH_COUNT}}', color:'#5aaaff' },
   { id:'trending_broad', label:'TMDB Trending {{TRENDING_FETCH_COUNT_PLUS_ONE}}-{{TRENDING_BROAD_FETCH_COUNT}}', color:'#5aaaff' },
-  { id:'premiere',       label:'Premiere',                          color:'#e05555' },
   { id:'new_release',    label:'Newly Streaming (New)',             color:'#e05555' },
   { id:'just_added',     label:'Just Added',                        color:'#e05555' },
   { id:'new_season',     label:'New Season',                        color:'#e05555' },
@@ -4701,6 +4700,9 @@ const SASH_SLOTS = [
   // they sit last and only surface when nothing above did.
   { id:'returning',      label:'Returning',                         color:'#e05555' },
   { id:'airing',         label:'Airing',                            color:'#e05555' },
+  // Under Airing, which dates a new series' next episode; Premiere shows when
+  // nothing is airing (a whole season out at once).
+  { id:'premiere',       label:'Premiere',                          color:'#e05555' },
   { id:'cancelled',      label:'Cancelled',                         color:'#e05555' },
   { id:'ended',          label:'Ended',                             color:'#e05555' },
   { id:'physical',       label:'Physical',                          color:'#e05555' },
@@ -4709,7 +4711,7 @@ const SASH_SLOTS = [
   { id:'production',     label:'Production',                        color:'#e05555' },
   // Last, matching config.SASH_PRIORITY, so saved "slot@N" moves keep their
   // positions. Split out of Airing: a show between seasons with the next one
-  // announced ("Mar 4 Season 3", or just "Renewed").
+  // announced ("Season 3 Mar 4", or just "Renewed").
   { id:'renewed',        label:'Renewed',                           color:'#e05555' },
 ];
 
@@ -5699,8 +5701,7 @@ function getSashPriorityParam({ compact = true } = {}) {
 // Expand "default,-cult,festival@0" to the full ordered list it denotes.
 // Mirrors _apply_sash_diff in main.py; the two have to agree or the preview
 // shows one order and the served poster uses another.
-function expandSashDiff(tokens) {
-  const base = serverCaps.sash_priority_default;
+function expandSashDiff(tokens, base = serverCaps.sash_priority_default) {
   if (!Array.isArray(base) || !base.length) return tokens;
   const known = new Set(SASH_SLOTS.map(s => s.id));
   const order = base.filter(id => known.has(id));
@@ -10685,7 +10686,7 @@ function importUrl(urlStr, { silent = false, settingsOnly = false, preserveClien
   // startup restore reaches here before /server-caps has answered — the order
   // loadSashOrder() already put back stands rather than an unexpandable diff.
   const _sashDiffPending = !serverCaps.sash_priority_default
-    && (p.get('sash_priority') || '').split(',')[0].trim() === 'default';
+    && (p.get('sash_priority') || '').split(',')[0].trim().startsWith('default');
   if (p.has('sash_priority') && !_sashDiffPending) {
     let rawTokens = p.get('sash_priority').split(',').map(s => s.trim()).filter(Boolean);
     const known  = new Set(SASH_SLOTS.map(s => s.id));
@@ -10693,8 +10694,13 @@ function importUrl(urlStr, { silent = false, settingsOnly = false, preserveClien
     // plain ordered list before the legacy handling below can read it. Without
     // this every token would fail the `known` test and import would land on
     // "every sash disabled", quietly discarding the order it was handed.
+    // Each seed counts positions in the default order of its day (an older
+    // one's comes from sash_priority_diff_bases), as the server reads it.
+    const _diffBases = serverCaps.sash_priority_diff_bases || {};
     if (rawTokens[0] === serverCaps.sash_priority_diff_seed) {
       rawTokens = expandSashDiff(rawTokens.slice(1));
+    } else if (Array.isArray(_diffBases[rawTokens[0]])) {
+      rawTokens = expandSashDiff(rawTokens.slice(1), _diffBases[rawTokens[0]]);
     }
     // Back-compat: the legacy combined "structural" token expands, in place, to
     // its granular slots in the same priority order it used internally

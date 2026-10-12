@@ -241,7 +241,7 @@ class NativeDigitTests(unittest.TestCase):
         self.assertEqual(translate_sash("#12 Today", "fa"), "#۱۲ امروز")
         self.assertEqual(translate_sash("Dec 2027 Cinema", "ar"), "في السينما في ديسمبر ٢٠٢٧")
         self.assertEqual(translate_sash("Mar 4 Season 3", "ar"), "الموسم ٣ في ٤ مارس")
-        self.assertEqual(translate_sash("Oct 16 Cinema", "en"), "Oct 16 Cinema")
+        self.assertEqual(translate_sash("Oct 16 Cinema", "en"), "Cinema Oct 16")
         self.assertEqual(translate_sash("#3 Today", "en"), "#3 Today")
 
     def test_the_year_takes_the_languages_digits(self):

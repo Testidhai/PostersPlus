@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Sash dates read word first
+
+- Every dated sash puts its word before the date, as "Streams Oct 23"
+  always did: `Cinema Oct 16`, `Physical Nov 3`, `Season 3 Mar 4`,
+  `Returns Jan 8` (issue 36). Polish and Swahili follow suit; the other
+  languages already did.
+- An unaired series reads `Premieres Dec 25`, and the **Premiere** sash
+  for a series that started in the last fortnight shows when:
+  `Premiered Oct 2` (with Show Date on).
+- **Premiere** moves below **Airing** in the default sash order, so a new
+  series on air shows its next episode (`Airing Oct 15`). Saved orders
+  keep the positions they were saved with.
+
 ### Next episode date on Airing
 
 - The **Airing** sash shows when the next episode airs: `Airing Oct 15`.

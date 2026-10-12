@@ -2593,10 +2593,54 @@ def _parse_weights(raw: str | None, sources: list[str]) -> dict | None:
 # these slots", which is how the configurator says "every sash off", and
 # quietly reinterpreting that as "default minus cult" would switch sashes back
 # on for anyone who had turned them all off.
-_SASH_DIFF_SEED = "default"
+_SASH_DIFF_SEED = "default2"
+
+# The default order each seed's positions count in.  A diff names absolute
+# positions ("cast@12"), so when the default order changes a new seed takes
+# over and URLs saved with an old one keep the order they were saved against.
+# "default": before Premiere moved under Airing (2026-10-12).
+_SASH_PRIORITY_V1: tuple[str, ...] = (
+    "watchlist",
+    "wins",
+    "gg_wins",
+    "festival",
+    "pic_noms",
+    "metacritic",
+    "gg_noms",
+    "trending",
+    "trending_broad",
+    "premiere",
+    "new_release",
+    "just_added",
+    "new_season",
+    "season_finale",
+    "studio",
+    "director",
+    "cast",
+    "blockbuster",
+    "cult",
+    "foreign",
+    "true_story",
+    "short_film",
+    "mini_series",
+    "binge_ready",
+    "returning",
+    "airing",
+    "cancelled",
+    "ended",
+    "physical",
+    "streaming",
+    "cinema",
+    "production",
+    "renewed",
+)
+_SASH_DIFF_BASES: dict[str, "tuple[str, ...] | list[str]"] = {
+    "default": _SASH_PRIORITY_V1,
+    _SASH_DIFF_SEED: _cfg.SASH_PRIORITY,
+}
 
 
-def _apply_sash_diff(tokens: list[str]) -> list[str]:
+def _apply_sash_diff(tokens: list[str], base: "list[str] | tuple[str, ...] | None" = None) -> list[str]:
     """Default order, with "-slot" removals and "slot@N" moves applied in order.
 
     Written for URL length: the full order is 30 slots and ~350 characters, and
@@ -2608,9 +2652,9 @@ def _apply_sash_diff(tokens: list[str]) -> list[str]:
     the same principle as the legacy branch — a URL that half-parses still
     renders a poster, where a 400 renders nothing.
     """
-    order = list(_cfg.SASH_PRIORITY)
+    order = list(_cfg.SASH_PRIORITY if base is None else base)
     for token in tokens:
-        if token == _SASH_DIFF_SEED:
+        if token in _SASH_DIFF_BASES:
             continue
         if token.startswith("-"):
             slot = token[1:]
@@ -2638,8 +2682,8 @@ def _parse_sash_priority(raw: str | None) -> list[str]:
         return list(_cfg.SASH_PRIORITY)
     tokens = [s.strip() for s in raw.split(",") if s.strip()]
 
-    if tokens and tokens[0] == _SASH_DIFF_SEED:
-        return _apply_sash_diff(tokens[1:])
+    if tokens and tokens[0] in _SASH_DIFF_BASES:
+        return _apply_sash_diff(tokens[1:], _SASH_DIFF_BASES[tokens[0]])
     # Tokens prefixed with "-" are explicit exclusions
     excluded  = {t[1:] for t in tokens if t.startswith("-") and t[1:] in ALL_PRIORITY_SLOTS}
     active    = [t      for t in tokens if not t.startswith("-") and t in ALL_PRIORITY_SLOTS]
@@ -7955,6 +7999,9 @@ async def server_caps(request: Request, access_key: str = ""):
         "landscape_own_params":   list(_LANDSCAPE_OWN_PARAMS),
         "sash_priority_default": list(_cfg.SASH_PRIORITY),
         "sash_priority_diff_seed": _SASH_DIFF_SEED,
+        # Older seeds' orders, so the configurator imports a URL saved with
+        # one the way the server reads it.
+        "sash_priority_diff_bases": {k: list(v) for k, v in _SASH_DIFF_BASES.items()},
         "imdb_dataset_enabled":  imdb_dataset.is_enabled(),
         "imdb_dataset_titles":   imdb_dataset.row_count(),
         # Largest resolution= the configurator may offer (MAX_POSTER_RESOLUTION);
@@ -12287,6 +12334,8 @@ async def get_poster(
             is_watchlisted=watchlist.is_listed(effective_imdb_id or imdb_id, tmdb_id, type),
             is_blockbuster=bool(_is_blockbuster),
         )
+        if not rcfg.release_status_dates:
+            discovery_meta.premiere_date = None   # plain "Premiere", as Show Date off reads
 
         _sash_priority = rcfg.sash_priority
 

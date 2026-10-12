@@ -198,6 +198,31 @@ class LabelTests(unittest.TestCase):
         self.assertEqual(translate_sash("Dec 25 Premiere", "pt-BR"), "Estreia 25 Dez")
         self.assertEqual(translate_sash("Renewed", "it"), "Rinnovata")
 
+    def test_english_reads_the_word_before_the_date(self):
+        # Issue 36: "Physical" came after its date while "Streams" came first.
+        for label, shown in (("Oct 16 Cinema", "Cinema Oct 16"),
+                             ("Nov 3 Physical", "Physical Nov 3"),
+                             ("Oct 23 Streaming", "Streams Oct 23"),
+                             ("Dec 2027 Cinema", "Cinema Dec 2027"),
+                             ("Mar 4 Season 3", "Season 3 Mar 4"),
+                             ("Jan 8 Returns", "Returns Jan 8"),
+                             ("Dec 25 Premiere", "Premieres Dec 25"),
+                             ("Oct 2 Premiered", "Premiered Oct 2")):
+            with self.subTest(label):
+                self.assertEqual(translate_sash(label, "en"), shown)
+                self.assertEqual(translate_sash(label, None), shown)
+        self.assertEqual(translate_sash("Oct 16 Cinema", "pl"), "W kinach 16 Paź")
+        self.assertEqual(translate_sash("Oct 2 Premiered", "pt-BR"), "Estreou 2 Out")
+
+    def test_the_premiere_sash_says_when(self):
+        from discovery import _evaluate_slot, premiered_label
+        self.assertEqual(premiered_label("2026-09-14", today=TODAY), "Sep 14 Premiered")
+        self.assertIsNone(premiered_label("2026-09-30", today=TODAY))
+        meta = DiscoveryMeta(is_premiere=True, premiere_date="2020-09-14")
+        self.assertEqual(_evaluate_slot("premiere", meta), "Sep 14 Premiered")
+        meta.premiere_date = None   # dates off
+        self.assertEqual(_evaluate_slot("premiere", meta), "Premiere")
+
     def test_the_next_episode_date_on_airing(self):
         # airing_dates: the window is the status itself, read first in English.
         self.assertEqual(release_date_label("2026-09-29", "Airing", today=TODAY), "Sep 29 Airing")
@@ -348,3 +373,26 @@ class FollowingEpisodeTests(unittest.TestCase):
         self.assertEqual(first, days[2].isoformat())
         self.assertEqual(again, first)
         self.assertEqual(calls, ["/3/tv/290856/season/2"])   # cached
+
+
+class SashOrderSeedTests(unittest.TestCase):
+    """Premiere moved under Airing; diffs saved against the old order keep it."""
+
+    def test_premiere_sits_under_airing(self):
+        order = main._parse_sash_priority(None)
+        self.assertEqual(order.index("premiere"), order.index("airing") + 1)
+
+    def test_an_old_seed_counts_positions_in_the_old_order(self):
+        old = main._parse_sash_priority("default,cast@0")
+        self.assertEqual(old[0], "cast")
+        self.assertLess(old.index("premiere"), old.index("airing"))
+        self.assertEqual(old[1:], [s for s in main._SASH_PRIORITY_V1 if s != "cast"])
+        new = main._parse_sash_priority("default2,cast@0")
+        self.assertGreater(new.index("premiere"), new.index("airing"))
+
+    def test_the_configurator_is_told_every_seed(self):
+        import re
+        html = open("configurator.html", encoding="utf-8").read()
+        self.assertIn("serverCaps.sash_priority_diff_bases", html)
+        slots = re.findall(r"\{ id:'(\w+)',", html.split("const SASH_SLOTS", 1)[1].split("];", 1)[0])
+        self.assertEqual(slots, [s for s in main._cfg.SASH_PRIORITY if s in slots])

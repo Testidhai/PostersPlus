@@ -40,7 +40,7 @@ _NOM_SEP = " • "
 # "releaseDay<Window>" / "releaseMonth<Window>", for when the plain status
 # word reads badly with a date — English dates Streaming as "Streams Sep 29".
 _RELEASE_DATE_RE = re.compile(
-    r"^([A-Z][a-z]{2}) (\d{1,2}|\d{4}) (Cinema|Streaming|Physical|Premiere|Returns|Airing|Season \d+)$"
+    r"^([A-Z][a-z]{2}) (\d{1,2}|\d{4}) (Cinema|Streaming|Physical|Premiere|Premiered|Returns|Airing|Season \d+)$"
 )
 _SEASON_WINDOW_RE = re.compile(r"^Season (\d+)$")
 _MONTHS_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -110,7 +110,10 @@ def _translate_release_date(match: "re.Match[str]", sl: dict, lang: str | None) 
         tmpl = sl.get("seasonWindow")
         window = tmpl.replace("{n}", native_digits(season.group(1), lang)) if tmpl else window_en
     else:
-        window = sl.get(window_en, window_en)
+        # A language without its own past tense for a premiere reads its word
+        # for one ("Estreia 2 out"); the date says which way it points.
+        window = (sl.get(window_en) or (window_en == "Premiered" and sl.get("Premiere"))
+                  or window_en)
     if is_year:
         tmpl = sl.get(f"releaseMonth{window_en}") or sl.get("releaseMonth")
         return (tmpl.replace("{month}", month).replace("{year}", rest).replace("{window}", window)
