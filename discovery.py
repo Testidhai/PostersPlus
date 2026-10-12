@@ -419,8 +419,9 @@ def tv_release_facts(
     series details (``next_episode_to_air``, ``last_episode_to_air`` and the
     season list) says which it is, at no extra API call:
 
-    * **Airing** — an episode aired within TV_RECENT_EPISODE_DAYS, or the next
-      one is due within TV_RETURNING_LOOKAHEAD_DAYS and continues the season.
+    * **Airing** — an episode aired within TV_RECENT_EPISODE_DAYS (unless TMDB
+      marks it a finale), or the next one is due within
+      TV_RETURNING_LOOKAHEAD_DAYS and continues the season.
       A mid-season break further out than that is still Airing, dated with the
       episode it resumes on ("Jan 8 Returns").
     * **Renewed** — the next season is known: either its first episode is
@@ -490,7 +491,10 @@ def tv_release_facts(
     last_date = _parse_date(_episode_date(last_ep))
     next_date = _parse_date(_episode_date(next_ep))
     last_season = _episode_season(last_ep) or 0
-    recent = last_date is not None and 0 <= (today - last_date).days <= TV_RECENT_EPISODE_DAYS
+    # A finale TMDB has marked as one ends the run there: without it a show
+    # read Airing for a fortnight after its season was over (Ted Lasso).
+    recent = (last_date is not None and 0 <= (today - last_date).days <= TV_RECENT_EPISODE_DAYS
+              and (last_ep or {}).get("episode_type") not in ("finale", "mid_season"))
 
     if next_date is not None and next_date >= today:
         next_season = _episode_season(next_ep) or last_season

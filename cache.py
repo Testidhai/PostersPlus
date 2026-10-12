@@ -1867,6 +1867,11 @@ def _safe_cache_path(base_dir: str, filename: str) -> str:
 # TMDB metadata cache
 # ---------------------------------------------------------------------------
 
+# How long a series row TMDB sent with an already-aired "next" episode is kept
+# before asking again (see get_cached_tmdb_metadata).
+STALE_NEXT_EPISODE_RETRY = 6 * 3600
+
+
 def get_cached_tmdb_metadata(cache_key: str) -> dict | None:
     try:
         row = get_db().execute(
@@ -1934,8 +1939,12 @@ def get_cached_tmdb_metadata(cache_key: str) -> dict | None:
                 # Whole days: a row cached on the air day itself (TMDB still
                 # calls that episode "next" until it has gone out) expires once
                 # the day is over, without refetching on every request that day.
+                # TMDB is also slow to move "next" on: Slow Horses was fetched
+                # the morning after an episode with that episode still next.
+                # Such a row is retried every few hours rather than kept a week.
                 day_end = datetime.strptime(next_air, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() + 86400
-                if cached_at < day_end <= time.time():
+                if day_end <= time.time() and (
+                        cached_at < day_end or age_days * 86400 >= STALE_NEXT_EPISODE_RETRY):
                     age_days = 9999
             except Exception:
                 pass

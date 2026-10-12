@@ -12,7 +12,11 @@
 - A season that premiered shortly after a show's details were cached read
   as an undated **Renewed** for up to a week, and on the premiere day
   itself, instead of **Airing**. A series' cached details now refresh as
-  soon as its next episode airs.
+  soon as its next episode airs, and a few hours later when TMDB was still
+  listing an aired episode as next.
+- A show whose season finale aired in the last fortnight no longer reads
+  **Airing**: a finale TMDB has marked ends the run there, and the show is
+  Renewed if its next season is listed (no status if not).
 
 ### Landscape Rating Bar and Bar
 

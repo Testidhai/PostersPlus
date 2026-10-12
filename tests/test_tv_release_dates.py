@@ -95,6 +95,24 @@ class ReturningSeriesTests(unittest.TestCase):
         # The anime providers ship a status and nothing to refine it with.
         self.assertEqual(facts("Returning Series"), ("Airing", None, None))
 
+    def test_a_marked_finale_ends_the_run(self):
+        # Ted Lasso: S4 finale last week, nothing scheduled, nothing announced.
+        finale = dict(ep(4, 10, "2026-09-16"), episode_type="finale")
+        self.assertEqual(facts("Returning Series", last_episode=finale,
+                               seasons=seasons((4, "2026-07-29"))),
+                         (None, None, None))
+        # ...and a renewal already listed reads as one.
+        self.assertEqual(facts("Returning Series", last_episode=finale,
+                               seasons=seasons((4, "2026-07-29"), (5, None))),
+                         ("Renewed", None, None))
+
+    def test_an_aired_stale_finale_ends_the_run_too(self):
+        # Lanterns cached before its finale aired: "next" was the finale.
+        self.assertEqual(
+            facts("Returning Series", last_episode=ep(1, 7, "2026-09-13"),
+                  next_episode=dict(ep(1, 8, "2026-09-20"), episode_type="finale")),
+            (None, None, None))
+
     def test_a_premiere_cached_before_it_aired_is_airing(self):
         # Elsbeth, cached the day before S4E1: the "next" episode has aired
         # since, and used to leave an undated "Renewed".
@@ -248,6 +266,15 @@ class NextEpisodeExpiryTests(unittest.TestCase):
             self.assertIsNone(self.cache.get_cached_tmdb_metadata("tv_1_en_x"))
             inv.assert_called_once_with("1", "tv")
         self.assertIsNotNone(self.cache.get_cached_tmdb_metadata("tv_2_en_x"))
+
+    def test_a_row_tmdb_sent_with_an_aired_next_is_retried_after_hours(self):
+        # Slow Horses, fetched the morning after S6E4 with S6E4 still "next".
+        from datetime import datetime, timedelta, timezone
+        yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
+        self._store("tv_1_en_x", yesterday, cached_ago=60)
+        self._store("tv_2_en_x", yesterday, cached_ago=self.cache.STALE_NEXT_EPISODE_RETRY + 60)
+        self.assertIsNotNone(self.cache.get_cached_tmdb_metadata("tv_1_en_x"))
+        self.assertIsNone(self.cache.get_cached_tmdb_metadata("tv_2_en_x"))
 
     def test_a_row_cached_on_the_air_day_expires_the_day_after(self):
         # Elsbeth was cached at 13:32 on its premiere day, with that premiere

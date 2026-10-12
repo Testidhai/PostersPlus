@@ -879,6 +879,7 @@ from festivals import match_festival_keyword
 from i18n import (has_language, load_languages, native_digits, translate_genre, translate_sash,
                   upper_label, visual)
 from cache import (
+    STALE_NEXT_EPISODE_RETRY,
     get_cached_tvdb_json,
     get_cached_trending_snapshot_entry,
     pop_trending_turnover_replay,
@@ -12205,6 +12206,13 @@ async def get_poster(
         # status came from, so this is not a second TMDB call.
         _upcoming_release_date: str | None = None
         _upcoming_release_window: str | None = None
+        # TMDB still calling an aired episode "next" (it moves on late): the
+        # date that should follow it isn't known yet, so the render is kept
+        # only until the metadata row is asked again.
+        _stale_next_episode = False
+        if type in ("tv", "series"):
+            _next_day = _parse_tmdb_date((tmdb_data.get("next_episode") or {}).get("air_date"))
+            _stale_next_episode = _next_day is not None and _next_day < datetime.now(timezone.utc).date()
         if (rcfg.release_status_dates and type in ("tv", "series")
                 and _release_status in ("Production", "Renewed", "Airing")):
             # Worked out with the status, from the same episode data — no call.
@@ -12649,6 +12657,11 @@ async def get_poster(
                                                  tzinfo=timezone.utc).timestamp() - time.time()))
                 _ttl_override = (
                     _date_ttl if _ttl_override is None else min(_ttl_override, _date_ttl)
+                )
+            if _stale_next_episode:
+                _ttl_override = (
+                    STALE_NEXT_EPISODE_RETRY if _ttl_override is None
+                    else min(_ttl_override, STALE_NEXT_EPISODE_RETRY)
                 )
             # The trending list could not be read (twice), so this render may be
             # missing a rank it should show.  A lookup that did read the list
