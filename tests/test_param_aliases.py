@@ -96,6 +96,35 @@ class ReadingTests(unittest.TestCase):
         self.assertIn("bdm=6", url)
         self.assertNotIn("badge_display_mode", url)
 
+    def test_weight_lists_name_their_sources_short(self):
+        short = param_aliases.shorten([("movie_weights", "letterboxd:0.99,trakt:0.10,tmdb:1.00,imdb:0.00")])
+        self.assertEqual(short, [("mw", "lb:.99,tk:.1,tm:1,im:0")])
+        # Spelled out as the configurator writes them long, so both spellings
+        # share a composite cache key; a long list is left exactly as it was.
+        self.assertEqual(param_aliases.expand(short),
+                         [("movie_weights", "letterboxd:0.99,trakt:0.10,tmdb:1.00,imdb:0.00")])
+        self.assertEqual(param_aliases.expand([("tv_weights", "trakt:0.8")]), [("tv_weights", "trakt:0.8")])
+        q = self._through_middleware("/poster", "tmdb_id=1&movie_weights=lb:.5,rt:.5")
+        self.assertEqual(q["movie_weights"], "letterboxd:0.50,tomatoes:0.50")
+
+    def test_weight_source_codes_are_permanent_and_clash_with_no_source(self):
+        import config
+        sources = set(config.MOVIE_WEIGHTS) | set(config.TV_WEIGHTS)
+        sources |= set(config.ANIME_MOVIE_SOURCES) | set(config.ANIME_TV_SOURCES)
+        self.assertEqual(sources - set(param_aliases.WEIGHT_SOURCES), set())
+        codes = list(param_aliases.WEIGHT_SOURCES.values())
+        self.assertEqual(len(codes), len(set(codes)))
+        self.assertFalse(set(codes) & sources)
+        self.assertEqual(param_aliases.WEIGHT_SOURCES, {
+            "letterboxd": "lb", "trakt": "tk", "tomatoes": "rt", "popcorn": "pc", "imdb": "im",
+            "metacritic": "mc", "metacriticuser": "mu", "tmdb": "tm", "rogerebert": "re",
+            "myanimelist": "mal", "anilist": "al", "kitsu": "ki"})
+
+    def test_the_addons_poster_urls_leave_list_characters_unescaped(self):
+        url = main._addon_poster_url("https://x", [("movie_weights", "letterboxd:0.80,tomatoes:0.20")],
+                                     None, "movie", "movie", "1", None)
+        self.assertIn("mw=lb:.8,rt:.2", url)
+
     def test_a_report_shows_the_settings_by_name(self):
         self.assertEqual(reports.clean_params("https://x/poster?bdm=6&tmdb_key=k"), "badge_display_mode=6")
 
@@ -159,3 +188,6 @@ class DocTests(unittest.TestCase):
         block = text[text.index("<!-- param-aliases:start"):text.index("<!-- param-aliases:end")]
         documented = dict(re.findall(r"^\| `([a-z0-9_]+)` \| `([a-z0-9_]+)` \|$", block, re.M))
         self.assertEqual(documented, param_aliases.ALIASES)
+        block = text[text.index("<!-- weight-sources:start"):text.index("<!-- weight-sources:end")]
+        self.assertEqual(dict(re.findall(r"^\| `([a-z]+)` \| `([a-z]+)` \|$", block, re.M)),
+                         param_aliases.WEIGHT_SOURCES)

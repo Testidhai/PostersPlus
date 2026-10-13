@@ -7769,9 +7769,35 @@ function shortenParams(params) {
   const out = new URLSearchParams();
   for (const [key, value] of params) {
     const bool = (value === 'true' || value === 'false') && _isBoolParam(key);
-    out.append(aliases[key] || key, bool ? (value === 'true' ? '1' : '0') : value);
+    const v = _WEIGHT_PARAMS.includes(key) ? _mapWeights(value, serverCaps.weight_source_aliases, true) : value;
+    out.append(aliases[key] || key, bool ? (value === 'true' ? '1' : '0') : v);
   }
   return out;
+}
+
+// The rating-weight lists name their sources by short code too, a weight
+// without its leading zero ("lb:.8"); param_aliases.py WEIGHT_SOURCES.
+const _WEIGHT_PARAMS = ['movie_weights', 'tv_weights', 'anime_movie_weights', 'anime_tv_weights'];
+function _mapWeights(value, table, compact) {
+  if (!table) return value;
+  return String(value).split(',').map(part => {
+    const i = part.indexOf(':');
+    const name = (i < 0 ? part : part.slice(0, i)).trim();
+    const mapped = table[name.toLowerCase()];
+    if (mapped === undefined || i < 0) return part;
+    let w = part.slice(i + 1).trim();
+    const n = parseFloat(w);
+    if (!Number.isNaN(n) && /^\d*\.?\d+$/.test(w)) {
+      w = compact ? String(Math.round(n * 100) / 100).replace(/^0\./, '.') : n.toFixed(2);
+    }
+    return `${mapped}:${w}`;
+  }).join(',');
+}
+
+// URLSearchParams escapes ":" and ",", legal unescaped in a query and three
+// characters each escaped; the weight, badge and sash lists are full of them.
+function _unescapeListChars(query) {
+  return query.replace(/%3A/g, ':').replace(/%2C/g, ',');
 }
 
 // shortenParams for a whole URL, after any edits by long name; keeps the
@@ -7779,7 +7805,7 @@ function shortenParams(params) {
 function shortenUrl(url) {
   const q = url.indexOf('?');
   if (q < 0) return url;
-  return decodePlaceholders(url.slice(0, q + 1) + shortenParams(new URLSearchParams(url.slice(q + 1))).toString());
+  return decodePlaceholders(url.slice(0, q + 1) + _unescapeListChars(shortenParams(new URLSearchParams(url.slice(q + 1))).toString()));
 }
 
 // The reverse, for an imported URL: every short name spelled out (the long
@@ -7795,7 +7821,11 @@ function expandParams(params) {
     const name = long[key] || key;
     if (long[key] && present.has(name)) continue;
     const bool = (value === '1' || value === '0') && _isBoolParam(name);
-    out.append(name, bool ? (value === '1' ? 'true' : 'false') : value);
+    const codes = serverCaps.weight_source_aliases;
+    const v = _WEIGHT_PARAMS.includes(name) && codes
+      ? _mapWeights(value, Object.fromEntries(Object.entries(codes).map(([l, sh]) => [sh, l])), false)
+      : value;
+    out.append(name, bool ? (value === '1' ? 'true' : 'false') : v);
   }
   return out;
 }

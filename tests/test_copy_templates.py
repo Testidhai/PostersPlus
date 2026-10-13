@@ -255,7 +255,8 @@ class ShareSettingsTests(unittest.TestCase):
         scripts.feed(self.html)
         names = ["SHARE_ORIGIN", "SHARE_LEGACY_ORIGIN", "_SHARE_DROP", "shareOrigin",
                  "buildShareUrl", "isShareUrl", "applyImport", "decodePlaceholders",
-                 "_isBoolParam", "shortenParams", "shortenUrl", "expandParams", *extra]
+                 "_isBoolParam", "shortenParams", "shortenUrl", "expandParams",
+                 "_WEIGHT_PARAMS", "_mapWeights", "_unescapeListChars", *extra]
         script = "const source = " + json.dumps(scripts.source) + ";\n"
         script += r"""
             const assert = require('node:assert/strict');
@@ -352,7 +353,7 @@ class ShareSettingsTests(unittest.TestCase):
               return 'awards,imdb';
             }
             assert.equal(buildShareUrl(), 'https://postersplus.cc/poster?shape={shape}'
-              + '&rating_mode=2&landscape_rating_mode=3&sash_priority=awards%2Cimdb&share=1');
+              + '&rating_mode=2&landscape_rating_mode=3&sash_priority=awards,imdb&share=1');
         """)
 
     def test_shared_and_normal_urls_take_the_correct_import_path(self):

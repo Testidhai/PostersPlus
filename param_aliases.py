@@ -265,23 +265,87 @@ ALIASES: dict[str, str] = {
 
 LONG: dict[str, str] = {short: long for long, short in ALIASES.items()}
 
+# The four rating-weight lists name each source in their value
+# ("letterboxd:0.80,tomatoes:0.20"), and a much-customised URL carries all
+# four: ~680 characters, a third of the budget.  Inside those values a source
+# goes by a short code too, and a weight drops its leading zero (".8").
+# Permanent and append-only like ALIASES; a code is never a source's name.
+WEIGHT_PARAMS = ("movie_weights", "tv_weights", "anime_movie_weights", "anime_tv_weights")
+WEIGHT_SOURCES: dict[str, str] = {
+    "letterboxd": "lb",
+    "trakt": "tk",
+    "tomatoes": "rt",
+    "popcorn": "pc",
+    "imdb": "im",
+    "metacritic": "mc",
+    "metacriticuser": "mu",
+    "tmdb": "tm",
+    "rogerebert": "re",
+    "myanimelist": "mal",
+    "anilist": "al",
+    "kitsu": "ki",
+}
+WEIGHT_SOURCES_LONG: dict[str, str] = {short: long for long, short in WEIGHT_SOURCES.items()}
+
+
+def _map_weights(value: str, table: dict[str, str], compact: bool = False) -> str:
+    parts = []
+    for part in value.split(","):
+        key, sep, weight = part.partition(":")
+        name = key.strip()
+        mapped = table.get(name.lower())
+        if mapped is not None and sep:
+            weight = _compact_number(weight) if compact else _full_number(weight)
+        parts.append((mapped or name) + sep + weight)
+    return ",".join(parts)
+
+
+def _full_number(text: str) -> str:
+    """".8" -> "0.80", as the configurator writes a weight spelled out, so a
+    short URL and its long twin share a composite cache key."""
+    try:
+        return f"{float(text):.2f}"
+    except ValueError:
+        return text
+
+
+def _compact_number(text: str) -> str:
+    """"0.80" -> ".8", "1.00" -> "1"; anything else as it was."""
+    t = text.strip()
+    if "." in t and t.replace(".", "", 1).isdigit():
+        t = t.rstrip("0").rstrip(".") or "0"
+        if t.startswith("0.") and len(t) > 2:
+            t = t[1:]
+    return t
+
+
+def needs_expand(pairs: Iterable[tuple[str, str]]) -> bool:
+    """Whether expand would change *pairs*: a short name, or a weights list
+    (which may name its sources short)."""
+    return any(k in LONG or k in WEIGHT_PARAMS for k, _v in pairs)
+
 
 def expand(pairs: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
-    """*pairs* with every short name spelled out.  Where a URL carries both
-    spellings of one setting, the long one wins."""
+    """*pairs* with every short name spelled out, the weight lists' source
+    codes included.  Where a URL carries both spellings of one setting, the
+    long one wins."""
     pairs = list(pairs)
     present = {k for k, _v in pairs}
     out = []
     for key, value in pairs:
         long = LONG.get(key)
-        if long is None:
-            out.append((key, value))
-        elif long not in present:
-            out.append((long, value))
+        name = key if long is None else long
+        if long is not None and long in present:
+            continue
+        if name in WEIGHT_PARAMS:
+            value = _map_weights(value, WEIGHT_SOURCES_LONG)
+        out.append((name, value))
     return out
 
 
 def shorten(pairs: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
     """*pairs* with every setting by its short name, for a URL the server
     writes itself (the trending addon's poster URLs)."""
-    return [(ALIASES.get(k, k), v) for k, v in pairs]
+    return [(ALIASES.get(k, k),
+             _map_weights(v, WEIGHT_SOURCES, compact=True) if k in WEIGHT_PARAMS else v)
+            for k, v in pairs]

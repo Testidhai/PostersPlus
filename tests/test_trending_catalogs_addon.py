@@ -223,10 +223,10 @@ class AddonConfigTests(_AddonTest):
     def test_anime_posters_are_requested_by_anilist_id(self):
         seg = _cfg_segment("badge_display_mode=4")
         metas = self._metas(f"/trending/sekrit/{seg}/catalog/series/pp.trending.anime.json")
-        self.assertIn("stremio_id=anilist%3A5", metas[0]["poster"])
+        self.assertIn("stremio_id=anilist:5", metas[0]["poster"])
         self.assertIn("type=series", metas[0]["poster"])
         self.assertTrue(metas[0]["poster"].startswith("http://testserver/poster?"))
-        self.assertIn("stremio_id=anilist%3A5", metas[0]["landscapePoster"])
+        self.assertIn("stremio_id=anilist:5", metas[0]["landscapePoster"])
         self.assertIn("shape=landscape", metas[0]["landscapePoster"])
 
     def test_settings_segment_works_on_manifest_and_paged_urls(self):

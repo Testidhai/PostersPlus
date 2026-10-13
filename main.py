@@ -7517,7 +7517,7 @@ class _ParamAliasMiddleware:
         if (scope["type"] == "http" and scope.get("path", "").endswith("/poster")
                 and scope.get("query_string")):
             pairs = parse_qsl(scope["query_string"].decode("utf-8", "replace"), keep_blank_values=True)
-            if any(k in param_aliases.LONG for k, _v in pairs):
+            if param_aliases.needs_expand(pairs):
                 scope = {**scope, "query_string": urlencode(param_aliases.expand(pairs)).encode("ascii")}
         await self.app(scope, receive, send)
 
@@ -7773,7 +7773,9 @@ def _addon_poster_url(
         # is a new URL, so a client holding last list's image (its rank
         # baked in) for its max-age fetches this one's instead.
         ids.append((_LIST_VERSION_PARAM, version))
-    return f"{base}/poster?{urlencode(ids + param_aliases.shorten(cfg))}"
+    # ":" and "," are legal in a query unescaped, and three characters each
+    # escaped: the weight and badge lists are full of them.
+    return f"{base}/poster?{urlencode(ids + param_aliases.shorten(cfg), safe=':,')}"
 
 
 _LIST_VERSION_PARAM = "rv"
@@ -8036,6 +8038,7 @@ async def server_caps(request: Request, access_key: str = ""):
         "never_omitted_params":  sorted(_NEVER_OMITTED_PARAMS),
         # Short spellings of the settings for generated URLs (param_aliases).
         "param_aliases":         param_aliases.ALIASES,
+        "weight_source_aliases": param_aliases.WEIGHT_SOURCES,
         # Which settings also take a landscape_-prefixed per-shape value, and
         # which of those a landscape render never reads from the plain name.
         "landscape_split_params": [*_LANDSCAPE_SPLIT_PARAMS, *_LANDSCAPE_OWN_PARAMS],

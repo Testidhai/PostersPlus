@@ -367,6 +367,29 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 
 </details>
 
+Inside the four rating-weight lists (`mw`, `tw`, `amw`, `atw`) each source has a short code too, and a weight may drop its leading zero: `mw=lb:.8,rt:.2` is `movie_weights=letterboxd:0.80,tomatoes:0.20`. Generated URLs also leave `:` and `,` unescaped, which is legal in a query. The full spelling still works.
+
+<details><summary>Every rating source code</summary>
+
+<!-- weight-sources:start (generated from param_aliases.py; tests/test_param_aliases.py checks it) -->
+| Source | Code |
+|---|---|
+| `letterboxd` | `lb` |
+| `trakt` | `tk` |
+| `tomatoes` | `rt` |
+| `popcorn` | `pc` |
+| `imdb` | `im` |
+| `metacritic` | `mc` |
+| `metacriticuser` | `mu` |
+| `tmdb` | `tm` |
+| `rogerebert` | `re` |
+| `myanimelist` | `mal` |
+| `anilist` | `al` |
+| `kitsu` | `ki` |
+<!-- weight-sources:end -->
+
+</details>
+
 ### Logo endpoint
 
 `/logo` returns the best available title logo as its original PNG, using the same cached TMDB/Metahub selection chain as poster rendering:

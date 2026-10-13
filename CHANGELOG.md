@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Shorter rating weights in poster URLs
+
+- The rating-weight lists name each source by a short code (`mw=lb:.8,rt:.2`
+  for `movie_weights=letterboxd:0.80,tomatoes:0.20`), and generated URLs keep
+  `:` and `,` unescaped. A heavily customised URL with all four weight lists
+  drops by about a quarter (one report went from ~2080 to ~1600 characters
+  with keys), back under Bingecat's limit. Old URLs still work and
+  render the same cached posters.
+
 ### Portuguese (Portugal) and trending catalog limit
 
 - **Native Language** offers **Portuguese (Portugal)** (`pt-pt`). Plain
