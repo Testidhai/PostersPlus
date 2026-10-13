@@ -7647,7 +7647,6 @@ def _trending_catalog_name_rows() -> "list[dict]":
     rows = []
     for cid, ctype, endpoint, base_name in _TRENDING_CATALOGS:
         default = trending_lists.default_source(endpoint)
-        pickable = trending_lists.pickable(endpoint)
         sources = [s for s, _n in trending_lists.menu(endpoint)]
         sources += [s for s in names.get(endpoint, {}) if s not in sources]
         for source in sources:
@@ -7657,7 +7656,7 @@ def _trending_catalog_name_rows() -> "list[dict]":
                 "id": cid if plain else f"{cid}.{source}",
                 "source_name": trending_lists.source_name(endpoint, source),
                 "name": base_name if plain else f"{base_name} · {trending_lists.source_name(endpoint, source)}",
-                "offered": source in pickable or trending_lists.offered(endpoint, source),
+                "offered": trending_lists.offered(endpoint, source),
             })
     return rows
 

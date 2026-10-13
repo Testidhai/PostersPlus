@@ -2242,13 +2242,14 @@ function slUpdateBar() {
 // addon, for everyone on the instance; blank keeps the generated one.  Keyed
 // by list and source, as the server stores them (trending_names.py).
 const TCN_LISTS = { movie: 'Movies', tv: 'Series', anime: 'Anime', anime_movie: 'Anime Movies' };
-const tcn = { data: null, loading: false, list: 'movie', edits: null, q: '', added: new Set(), saving: false };
+const tcn = { data: null, loading: false, error: '', list: 'movie', edits: null, q: '', added: new Set(), saving: false };
 
 async function loadTrendingNames() {
   tcn.loading = true;
   const r = await api('/admin/api/trending-names');
   tcn.loading = false;
-  if (!r.ok) { toast((r.body && r.body.detail) || 'Could not load the catalog names'); return; }
+  if (!r.ok) { tcn.error = (r.body && r.body.detail) || 'Could not load the catalog names'; tcnRender(); return; }
+  tcn.error = '';
   tcn.data = r.body;
   tcn.edits = JSON.parse(JSON.stringify(r.body.names));
   tcnRender();
@@ -2256,10 +2257,18 @@ async function loadTrendingNames() {
 function tcnRender() { const el = document.getElementById('tcn-panel'); if (el) el.innerHTML = tcnPanel(); }
 function tcnName(list, source) { return ((tcn.edits[list] || {})[source]) || ''; }
 function tcnSavedName(list, source) { return ((tcn.data.names[list] || {})[source]) || ''; }
-function tcnDirty() {
-  const norm = n => JSON.stringify(Object.fromEntries(Object.entries(n).map(([l, m]) => [l, Object.fromEntries(Object.entries(m).filter(([, v]) => v.trim()).map(([k, v]) => [k, v.trim().replace(/\s+/g, ' ')]).sort())]).filter(([, m]) => Object.keys(m).length).sort()));
-  return norm(tcn.edits) !== norm(tcn.data.names);
+// Names as the server stores them (trending_names.validate): whitespace
+// collapsed, blanks dropped, as sorted "list/source=name" lines.
+function tcnNorm(names) {
+  const out = [];
+  for (const [list, bySource] of Object.entries(names))
+    for (const [source, name] of Object.entries(bySource)) {
+      const n = name.trim().replace(/\s+/g, ' ');
+      if (n) out.push(`${list}/${source}=${n}`);
+    }
+  return out.sort().join('\n');
 }
+function tcnDirty() { return tcnNorm(tcn.edits) !== tcnNorm(tcn.data.names); }
 // Every Streaming Top 10 chart the index has for *list*, as catalog rows.
 function tcnTop10(list) {
   const t = tcn.data.top10;
@@ -2285,7 +2294,9 @@ function tcnRows(list = tcn.list) {
 }
 function tcnPanel() {
   let html = `<div class="panel"><div class="panel-header"><span class="panel-title">Catalog names</span><span class="panel-index">trending addon</span></div><div class="panel-body">`;
-  if (!tcn.data) return html + `<div class="sl-none">Loading…</div></div></div>`;
+  if (!tcn.data) return html + (tcn.error
+    ? `<div class="sl-none">${esc(tcn.error)} <button type="button" class="btn btn-secondary btn-small" onclick="loadTrendingNames()">Retry</button></div></div></div>`
+    : `<div class="sl-none">Loading…</div></div></div>`);
   html += `<div class="field-hint" style="margin:0 0 var(--gap-field)">The name each catalog of the trending addon has in a client, for everyone on this instance. Blank keeps the name shown greyed in the box. A name replaces the whole generated one, including the source (“· IMDb Most Popular”) and language notes, and nothing is added to install URLs. Clients keep the manifest they installed, so refresh or reinstall the addon (and re-import it into AIOMetadata) to see a change.</div>`;
   if (!tcn.data.enabled) html += `<div class="notice warn"><div class="notice-body"><p>The trending catalogs addon is off, so these names aren't served until it's turned on.</p></div></div>`;
   const counts = l => Object.values(tcn.edits[l] || {}).filter(v => v.trim()).length;
@@ -3315,7 +3326,7 @@ function toast(msg) {
   t.textContent = msg; t.classList.add('show');
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 3200);
 }
-window.addEventListener('beforeunload', e => { if (Object.keys(changes).length || slDirtySections().length) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', e => { if (Object.keys(changes).length || slDirtySections().length || (tcn.data && tcnDirty())) { e.preventDefault(); e.returnValue = ''; } });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // A key in the URL (?admin_key=…) is accepted once and then scrubbed from the
