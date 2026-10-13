@@ -868,6 +868,7 @@ import graphic_badges
 import rating_badges
 import trending_rank
 import trending_lists
+import trending_names
 import top10_charts
 import param_aliases
 import awards as _awards_mod
@@ -7603,12 +7604,20 @@ def _trending_addon_guard(key: str | None) -> None:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
 
-def _trending_catalog_specs(lists: "trending_lists.TrendingLists") -> "list[tuple[str, str, str, str, str]]":
+def _trending_catalog_specs(
+    lists: "trending_lists.TrendingLists", names: "dict[str, dict[str, str]] | None" = None,
+) -> "list[tuple[str, str, str, str, str]]":
     """(catalog id, Stremio type, list, source, name) of each catalog *lists*
     picks: one per source picked for a list, its ranking one first.  The
     operator's source keeps the list's plain id, so an install that picks
     nothing has the catalogs it always had; another source's id names it
-    ("pp.trending.movie.imdb"), whatever else was picked beside it."""
+    ("pp.trending.movie.imdb"), whatever else was picked beside it.
+
+    A name the operator gave a list's source in the dashboard (*names*,
+    trending_names' {list: {source: name}}, read when not passed) stands in
+    for the generated one, notes and all."""
+    if names is None:
+        names = trending_names.load()
     out = []
     langs = dict(trending_lists.LANGUAGES)
     for cid, ctype, endpoint, name in _TRENDING_CATALOGS:
@@ -7622,10 +7631,35 @@ def _trending_catalog_specs(lists: "trending_lists.TrendingLists") -> "list[tupl
             plain = source == trending_lists.default_source(endpoint)
             out.append((
                 cid if plain else f"{cid}.{source}", ctype, endpoint, source,
-                (name if plain and len(picks) == 1
-                 else f"{name} · {trending_lists.source_name(endpoint, source)}") + lang_note,
+                names.get(endpoint, {}).get(source)
+                or (name if plain and len(picks) == 1
+                    else f"{name} · {trending_lists.source_name(endpoint, source)}") + lang_note,
             ))
     return out
+
+
+def _trending_catalog_name_rows() -> "list[dict]":
+    """The dashboard's catalog-name editor: every catalog the menu offers, as
+    {list, source, id, name (as generated alone), offered}.  Streaming Top
+    10's per-country charts are left to the editor's search (see
+    top10_charts.caps), apart from any already named."""
+    names = trending_names.load()
+    rows = []
+    for cid, ctype, endpoint, base_name in _TRENDING_CATALOGS:
+        default = trending_lists.default_source(endpoint)
+        pickable = trending_lists.pickable(endpoint)
+        sources = [s for s, _n in trending_lists.menu(endpoint)]
+        sources += [s for s in names.get(endpoint, {}) if s not in sources]
+        for source in sources:
+            plain = source == default
+            rows.append({
+                "list": endpoint, "source": source,
+                "id": cid if plain else f"{cid}.{source}",
+                "source_name": trending_lists.source_name(endpoint, source),
+                "name": base_name if plain else f"{base_name} · {trending_lists.source_name(endpoint, source)}",
+                "offered": source in pickable or trending_lists.offered(endpoint, source),
+            })
+    return rows
 
 
 def _resolve_trending_catalog(cid: str, ctype: str) -> "tuple[str, str] | None":
@@ -9291,6 +9325,40 @@ async def _sash_tmdb_search(section: str, q: str) -> list[dict]:
     items = [_sash_person_item(r) for r in results]
     want = "Directing" if section == "directors" else "Acting"
     return sorted(items, key=lambda i: i["department"] != want)
+
+
+@app.get("/admin/api/trending-names")
+async def admin_trending_names(request: Request, x_admin_key: str = Header(default="")):
+    await _admin._authorise(request, x_admin_key)
+    return _admin._json({
+        "enabled": _cfg.TRENDING_CATALOGS_ENABLED,
+        "names": trending_names.load(),
+        "catalogs": _trending_catalog_name_rows(),
+        "lists": {endpoint: {"id": cid, "name": name} for cid, _t, endpoint, name in _TRENDING_CATALOGS},
+        "top10": top10_charts.caps(),
+        "max_length": trending_names.MAX_NAME_LENGTH,
+    })
+
+
+@app.put("/admin/api/trending-names")
+async def admin_trending_names_save(request: Request, x_admin_key: str = Header(default="")):
+    """Body: {"names": {list: {source: name}}}, the whole set: a catalog
+    left out (or blank) goes back to its generated name."""
+    await _admin._authorise(request, x_admin_key)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Body must be JSON")
+    try:
+        names = trending_names.validate(
+            body.get("names") if isinstance(body, dict) else None, trending_lists.ENDPOINTS)
+        trending_names.save(names)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not save the names: {exc}")
+    logger.info(f"Admin: trending catalog names saved ({sum(map(len, names.values()))} set)")
+    return _admin._json({"names": names, "catalogs": _trending_catalog_name_rows()})
 
 
 @app.get("/admin/api/sash-lists")

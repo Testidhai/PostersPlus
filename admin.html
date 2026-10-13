@@ -618,6 +618,12 @@
   .crop-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border); }
   .art-empty { font-size: 11px; color: var(--text-secondary); padding: 8px 0 var(--gap-field); }
 
+  /* ── TRENDING CATALOG NAMES ── */
+  .tcn-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: var(--gap-field); }
+  .tcn-foot .msg { flex: 1; font-size: 11px; color: var(--text-secondary); }
+  .sl-item.off { opacity: .55; }
+  .sl-item.named { border-color: rgba(201,168,92,0.5); }
+
   /* ── SASH LISTS ── */
   .sl-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: var(--gap-field); }
   .sl-tabs .art-seg { font-family: 'DM Sans', system-ui, sans-serif; }
@@ -1350,6 +1356,7 @@ function renderGroup(g) {
     html += `<div class="advanced-body ${open ? 'open' : ''}">${adv.map(fieldHtml).join('')}</div>`;
   }
   html += `</div></div>`;
+  if (g.name === 'Trending') { html += `<div id="tcn-panel">${tcnPanel()}</div>`; if (!tcn.data && !tcn.loading) loadTrendingNames(); }
   return html;
 }
 function toggleAdvanced(id) {
@@ -2228,6 +2235,128 @@ function slUpdateBar() {
   document.getElementById('sl-savebar').classList.toggle('show', dirty.length > 0);
   document.getElementById('sl-dirty').innerHTML = dirty.length ? `Unsaved changes to <strong>${dirty.map(d => SL_SECTIONS[d].label).join(', ')}</strong>` : '';
   renderNav();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trending catalog names.  The operator's name for a catalog of the trending
+// addon, for everyone on the instance; blank keeps the generated one.  Keyed
+// by list and source, as the server stores them (trending_names.py).
+const TCN_LISTS = { movie: 'Movies', tv: 'Series', anime: 'Anime', anime_movie: 'Anime Movies' };
+const tcn = { data: null, loading: false, list: 'movie', edits: null, q: '', added: new Set(), saving: false };
+
+async function loadTrendingNames() {
+  tcn.loading = true;
+  const r = await api('/admin/api/trending-names');
+  tcn.loading = false;
+  if (!r.ok) { toast((r.body && r.body.detail) || 'Could not load the catalog names'); return; }
+  tcn.data = r.body;
+  tcn.edits = JSON.parse(JSON.stringify(r.body.names));
+  tcnRender();
+}
+function tcnRender() { const el = document.getElementById('tcn-panel'); if (el) el.innerHTML = tcnPanel(); }
+function tcnName(list, source) { return ((tcn.edits[list] || {})[source]) || ''; }
+function tcnSavedName(list, source) { return ((tcn.data.names[list] || {})[source]) || ''; }
+function tcnDirty() {
+  const norm = n => JSON.stringify(Object.fromEntries(Object.entries(n).map(([l, m]) => [l, Object.fromEntries(Object.entries(m).filter(([, v]) => v.trim()).map(([k, v]) => [k, v.trim().replace(/\s+/g, ' ')]).sort())]).filter(([, m]) => Object.keys(m).length).sort()));
+  return norm(tcn.edits) !== norm(tcn.data.names);
+}
+// Every Streaming Top 10 chart the index has for *list*, as catalog rows.
+function tcnTop10(list) {
+  const t = tcn.data.top10;
+  if (!t) return [];
+  const { name: base, id: cid } = tcn.data.lists[list];
+  const out = [];
+  for (const [iso, r] of Object.entries(t.regions)) {
+    for (const [svc, lists] of Object.entries(r.services)) {
+      if (!lists.includes(list)) continue;
+      const source = `fp_${svc}_${iso}`;
+      const name = `${t.services[svc] || svc} Top 10 (${r.name})`;
+      out.push({ list, source, id: `${cid}.${source}`, name: `${base} · ${name}`, source_name: name, offered: true });
+    }
+  }
+  return out;
+}
+function tcnRows(list = tcn.list) {
+  const rows = tcn.data.catalogs.filter(c => c.list === list);
+  const have = new Set(rows.map(c => c.source));
+  // Charts added from the search since the last save.
+  for (const c of tcnTop10(list)) if (tcn.added.has(`${list}/${c.source}`) && !have.has(c.source)) rows.unshift(c);
+  return rows;
+}
+function tcnPanel() {
+  let html = `<div class="panel"><div class="panel-header"><span class="panel-title">Catalog names</span><span class="panel-index">trending addon</span></div><div class="panel-body">`;
+  if (!tcn.data) return html + `<div class="sl-none">Loading…</div></div></div>`;
+  html += `<div class="field-hint" style="margin:0 0 var(--gap-field)">The name each catalog of the trending addon has in a client, for everyone on this instance. Blank keeps the name shown greyed in the box. A name replaces the whole generated one, including the source (“· IMDb Most Popular”) and language notes, and nothing is added to install URLs. Clients keep the manifest they installed, so refresh or reinstall the addon (and re-import it into AIOMetadata) to see a change.</div>`;
+  if (!tcn.data.enabled) html += `<div class="notice warn"><div class="notice-body"><p>The trending catalogs addon is off, so these names aren't served until it's turned on.</p></div></div>`;
+  const counts = l => Object.values(tcn.edits[l] || {}).filter(v => v.trim()).length;
+  html += `<div class="sl-tabs"><div class="art-seg">${Object.entries(TCN_LISTS).map(([k, v]) => `<button type="button" class="${k === tcn.list ? 'on' : ''}" onclick="tcnSetList('${k}')">${v}${counts(k) ? `<span class="n">${counts(k)}</span>` : ''}</button>`).join('')}</div></div>`;
+  if (tcn.data.top10 && tcnTop10(tcn.list).length) {
+    html += `<div class="sl-add"><div class="box"><svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="text" id="tcn-q" placeholder="Find a Streaming Top 10 chart to name, by service or country" value="${esc(tcn.q)}" autocomplete="off" oninput="tcnSearch(this.value)" onkeydown="if(event.key==='Escape')tcnSearch('')"></div><div id="tcn-results">${tcnResultsHtml()}</div></div>`;
+  }
+  html += `<div id="tcn-list">${tcnListHtml()}</div>`;
+  return html + tcnFootHtml() + `</div></div>`;
+}
+function tcnFootHtml() {
+  const dirty = tcnDirty();
+  return `<div class="tcn-foot"><span class="msg">${dirty ? 'Unsaved changes' : ''}</span><button type="button" class="btn btn-secondary" onclick="tcnDiscard()" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="btn btn-primary" onclick="tcnSave()" ${dirty && !tcn.saving ? '' : 'disabled'}>${tcn.saving ? 'Saving…' : 'Save names'}</button></div>`;
+}
+function tcnListHtml() {
+  const list = tcn.list;
+  const rows = tcnRows(list);
+  if (!rows.length) return `<div class="sl-none">No catalogs for ${esc(TCN_LISTS[list])}.</div>`;
+  return `<div class="sl-list">${rows.map(c => {
+    const v = tcnName(list, c.source);
+    const tip = c.offered ? c.id : `${c.id} — not offered now (source turned off or unavailable); the name applies again if it comes back`;
+    return `<div class="sl-item ${c.offered ? '' : 'off'} ${v.trim() ? 'named' : ''}">
+      <div class="body">
+        <div class="name" title="${esc(tip)}">${esc(c.source_name)} <span style="color:var(--text-muted);font-size:9.5px">· ${esc(c.id)}${c.offered ? '' : ' · not offered'}</span></div>
+        <label class="sl-label"><span class="pre">Name</span><input type="text" value="${esc(v)}" placeholder="${esc(c.name)}" maxlength="${tcn.data.max_length}" oninput="tcnSet('${list}', '${esc(c.source)}', this.value)" aria-label="Catalog name for ${esc(c.name)}"></label>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+function tcnResultsHtml() {
+  const q = tcn.q.trim().toLowerCase();
+  if (!q) return '';
+  const have = new Set(tcnRows().map(c => c.source));
+  const hits = tcnTop10(tcn.list).filter(c => c.source_name.toLowerCase().includes(q)).slice(0, 40);
+  const rows = hits.length ? hits.map(c => `<div class="sl-result"><span class="meta"><div class="n">${esc(c.source_name)}</div><div class="m">${esc(c.id)}</div></span>${have.has(c.source) ? '<span class="chip file">listed</span>' : `<button type="button" class="btn btn-primary btn-small" onclick="tcnAdd('${esc(c.source)}')">Add</button>`}</div>`).join('')
+    : `<div class="none">No Streaming Top 10 chart for ${esc(TCN_LISTS[tcn.list])} matches “${esc(tcn.q)}”.</div>`;
+  return `<div class="sl-results">${rows}</div>`;
+}
+function tcnSetList(k) { tcn.list = k; tcn.q = ''; tcnRender(); }
+function tcnSearch(q) {
+  tcn.q = q;
+  const el = document.getElementById('tcn-results');
+  if (el) el.innerHTML = tcnResultsHtml();
+  if (!q) { const i = document.getElementById('tcn-q'); if (i) i.value = ''; }
+}
+function tcnAdd(source) {
+  tcn.added.add(`${tcn.list}/${source}`);
+  tcn.q = '';
+  tcnRender();
+  const input = document.querySelector('#tcn-list .sl-item input');
+  if (input) input.focus();
+}
+function tcnSet(list, source, value) {
+  (tcn.edits[list] = tcn.edits[list] || {})[source] = value;
+  if (!value.trim()) delete tcn.edits[list][source];
+  // Only the footer: re-rendering the list would take the focus away.
+  const foot = document.querySelector('#tcn-panel .tcn-foot');
+  if (foot) foot.outerHTML = tcnFootHtml();
+}
+function tcnDiscard() { tcn.edits = JSON.parse(JSON.stringify(tcn.data.names)); tcn.added.clear(); tcnRender(); }
+async function tcnSave() {
+  tcn.saving = true; tcnRender();
+  const r = await api('/admin/api/trending-names', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ names: tcn.edits }) });
+  tcn.saving = false;
+  if (!r.ok) { toast((r.body && r.body.detail) || 'Could not save the names'); tcnRender(); return; }
+  tcn.data.names = r.body.names;
+  tcn.data.catalogs = r.body.catalogs;
+  tcn.edits = JSON.parse(JSON.stringify(r.body.names));
+  tcn.added.clear();
+  tcnRender();
+  toast('Catalog names saved');
 }
 
 // Short sash label for a person: "Philip Seymour Hoffman" → "P. Hoffman".
