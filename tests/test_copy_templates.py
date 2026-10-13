@@ -155,9 +155,37 @@ class CopyButtonBehaviourTests(unittest.TestCase):
             "Left-click to copy the URL for AIOMetadata, Nuvio, Bingecat and Xperience", self.html
         )
         self.assertIn(
-            "Right-click or long press to copy the config for Discover+ or share your config securely.",
+            "Right-click or long press to copy the config for Discover+, share your config "
+            "securely, or send it straight to AIOMetadata.",
             self.html,
         )
+
+    def test_send_to_aiometadata_is_in_the_menu(self):
+        self.assertIn("aiom.textContent = 'Send to AIOMetadata…';", self.html)
+        self.assertIn("aiom.onclick = openAiomModal;", self.html)
+
+    def test_send_to_aiometadata_keeps_the_password_in_the_browser(self):
+        # Straight to the user's AIOMetadata, without cookies, and never kept by
+        # the page: the password manager is offered it instead.
+        self.assertIn("credentials: 'omit',", self.html)
+        self.assertNotIn("localStorage.setItem(AIOM_URL_KEY, password", self.html)
+        self.assertIn('autocomplete="username"', self.html)
+        self.assertIn('autocomplete="current-password"', self.html)
+        self.assertIn("navigator.credentials.store(new PasswordCredential(", self.html)
+
+    def test_send_to_aiometadata_does_not_overwrite_a_newer_config(self):
+        self.assertIn("baseVersion: config.configVersion ?? undefined", self.html)
+        self.assertIn("if (saved.status === 409) {", self.html)
+
+    def test_send_to_aiometadata_sends_the_shape_url(self):
+        # One {shape} URL covers AIOMetadata's portrait and landscape slots,
+        # whichever client a left-click currently copies for.
+        self.assertIn("const url = buildTemplateUrl('standard');", self.html)
+
+    def test_opening_the_dialog_keeps_an_autofilled_password(self):
+        start = self.html.index("function openAiomModal() {")
+        body = self.html[start:self.html.index("\n}\n", start)]
+        self.assertNotIn("aiom-password').value = ''", body)
 
     def test_right_click_always_opens_the_menu(self):
         self.assertIn('oncontextmenu="return openCopyMenu(event)"', self.html)

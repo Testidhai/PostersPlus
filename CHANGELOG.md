@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Send to AIOMetadata
+
+- **Copy config → Send to AIOMetadata…** (right-click or long press) sets
+  your AIOMetadata poster pattern for you: paste your AIOMetadata install
+  URL and enter its password, and the configurator loads your AIOMetadata
+  config, swaps in the current poster URL and saves it back. No reinstall
+  is needed. One `{shape}` URL covers portrait and landscape, so a
+  landscape pattern that pointed at this server is cleared to follow it;
+  one pointing elsewhere is left alone. Your password and the config go
+  from your browser straight to AIOMetadata and never reach Posters+.
+  After a successful send your browser's password manager offers to save
+  the install URL and password, so next time it is fill and Send.
+  Instances with an addon password ask for it too. If the config was
+  saved somewhere else in the meantime, AIOMetadata refuses the change
+  instead of overwriting it. An AIOMetadata behind a login proxy
+  (Authelia, Pangolin…) needs `/api/config/load/`, `/api/config/update/`
+  and `/api/config/is-trusted/` let through; AIOMetadata still checks the
+  password on them.
+
 ### Landscape rating badge sites of its own
 
 - **Rating Badges → Own Sites** (landscape view) gives the landscape its own

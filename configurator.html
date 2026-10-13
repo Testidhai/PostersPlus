@@ -2032,6 +2032,10 @@
     font-size: 12px; line-height: 1.5; color: var(--text-secondary);
     border-left: 2px solid var(--warn, #e8963a); padding-left: 10px;
   }
+  .aiom-fields { display: flex; flex-direction: column; gap: 12px; }
+  .aiom-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+  #aiom-form { gap: 18px; }
+  .aiom-field[hidden], #aiom-inputs[hidden], #aiom-send[hidden] { display: none; }
   .report-msg { font-size: 12.5px; color: var(--text-primary); }
   .report-msg.err { color: var(--danger, #e05555); }
 
@@ -4443,7 +4447,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
           <button class="btn btn-preview" id="copy-config-btn" onclick="copyUrl()"
             oncontextmenu="return openCopyMenu(event)"
             aria-haspopup="true" aria-expanded="false"
-            data-tip="Left-click to copy the URL for AIOMetadata, Nuvio, Bingecat and Xperience — one URL covers portrait and landscape. Right-click or long press to copy the config for Discover+ or share your config securely.">Copy config</button>
+            data-tip="Left-click to copy the URL for AIOMetadata, Nuvio, Bingecat and Xperience — one URL covers portrait and landscape. Right-click or long press to copy the config for Discover+, share your config securely, or send it straight to AIOMetadata.">Copy config</button>
           <button class="btn btn-primary" onclick="openPresetModal()"
             data-tip="Replace the current settings with a saved preset.">Load preset</button>
           <button class="btn btn-reset" onclick="resetDefaults(); build(); queuePreviewReload(); saveApiKeys()"
@@ -4533,6 +4537,39 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
       <button class="btn btn-reset" onclick="closeReportModal()">Cancel</button>
       <button class="btn btn-primary" id="report-send" onclick="sendReport()" disabled>Send report</button>
     </div>
+  </div>
+</div>
+<div class="import-modal" id="aiom-modal" onclick="if(event.target===this)closeAiomModal()">
+  <div class="import-modal-box">
+    <div>
+      <div class="import-modal-title">Send to AIOMetadata</div>
+      <div class="report-subject">Sets your AIOMetadata poster pattern to these settings, for portrait and landscape, so you don't have to paste it in yourself. Your AIOMetadata password goes from this browser straight to your AIOMetadata instance; Posters+ never sees or stores it.</div>
+    </div>
+    <!-- A real login form, so password managers offer to save and fill it: the
+         install URL is the username, which also keeps two AIOMetadata configs
+         apart. Saved logins belong to this site, not to the AIOMetadata one. -->
+    <form class="aiom-fields" id="aiom-form" method="post" action="#"
+          onsubmit="event.preventDefault(); pushToAiom()">
+      <div class="aiom-fields" id="aiom-inputs">
+        <label class="aiom-field"><span>AIOMetadata install URL</span>
+          <input class="import-input" id="aiom-url" name="username" type="text" inputmode="url"
+                 autocomplete="username" autocapitalize="off" spellcheck="false"
+                 placeholder="https://…/stremio/…/manifest.json"></label>
+        <label class="aiom-field"><span>AIOMetadata password</span>
+          <input class="import-input" id="aiom-password" name="password" type="password"
+                 autocomplete="current-password"></label>
+        <!-- Not a login of the user's own: kept away from password managers so
+             the form doesn't read as a change-password one. -->
+        <label class="aiom-field" id="aiom-addon-password-row" hidden><span>Addon password (from whoever runs that AIOMetadata)</span>
+          <input class="import-input" id="aiom-addon-password" type="password" autocomplete="off"
+                 data-1p-ignore data-bwignore data-lpignore="true" data-form-type="other"></label>
+      </div>
+      <div class="report-msg" id="aiom-msg" hidden></div>
+      <div class="import-modal-btns">
+        <button type="button" class="btn btn-reset" onclick="closeAiomModal()">Close</button>
+        <button type="submit" class="btn btn-primary" id="aiom-send">Send</button>
+      </div>
+    </form>
   </div>
 </div>
 <div class="import-modal" id="whatsnew-modal" onclick="if(event.target===this)closeWhatsNew()">
@@ -4811,6 +4848,7 @@ const _BACK_MODALS = {
   'whatsnew-modal': () => closeWhatsNew(),
   'report-modal':   () => closeReportModal(),
   'trending-lists-modal': () => closeTrendingListsModal(),
+  'aiom-modal':     () => closeAiomModal(),
 };
 
 // Back gesture / button: close the topmost layer instead of leaving the page.
@@ -8130,6 +8168,15 @@ function renderCopyMenu() {
     share.textContent = COPY_TEMPLATE_SHARE.name;
     share.onclick = copyShare;
     menu.appendChild(share);
+    const aiom = document.createElement('button');
+    aiom.type = 'button';
+    aiom.className = 'menu-item';
+    aiom.id = 'copy-aiom';
+    aiom.setAttribute('role', 'menuitem');
+    aiom.title = 'Sets your AIOMetadata poster pattern to these settings for you.';
+    aiom.textContent = 'Send to AIOMetadata…';
+    aiom.onclick = openAiomModal;
+    menu.appendChild(aiom);
   }
   const current = rememberedTemplate();
   for (const t of COPY_TEMPLATES) {
@@ -8145,12 +8192,12 @@ function renderCopyMenu() {
 function copyButtonTip(current) {
   if (current.id === 'discoverplus') {
     return 'Left-click to copy the URL for Discover+. Right-click or long press to copy '
-      + 'the URL for AIOMetadata, Nuvio, Bingecat and Xperience, or share your config '
-      + 'securely. In landscape view it copies the landscape URL instead.';
+      + 'the URL for AIOMetadata, Nuvio, Bingecat and Xperience, share your config '
+      + 'securely, or send it straight to AIOMetadata. In landscape view it copies the landscape URL instead.';
   }
   return 'Left-click to copy the URL for AIOMetadata, Nuvio, Bingecat and Xperience — '
     + 'one URL covers portrait and landscape. Right-click or long press to copy the '
-    + 'config for Discover+ or share your config securely.';
+    + 'config for Discover+, share your config securely, or send it straight to AIOMetadata.';
 }
 
 function closeCopyMenu() {
@@ -8353,6 +8400,221 @@ async function copyShare() {
     return;
   }
   setStatus('Clipboard copy failed — check browser permissions.', 'err');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Send to AIOMetadata
+//
+// AIOMetadata keeps each user's config on its server under an id and a
+// password, and its own configurator saves through an open-CORS JSON API. So
+// this page can do what that configurator does: load the config, change the
+// poster pattern, and save it back. Everything runs in this browser — the
+// password and the config (which holds the user's API keys) go to their
+// AIOMetadata only, never to Posters+.
+//
+//   POST /api/config/load/:id    {password, addonPassword}  -> {config}
+//   PUT  /api/config/update/:id  {config, password, addonPassword, baseVersion}
+//   GET  /api/config/is-trusted/:id -> {trusted, requiresAddonPassword}
+//
+// The update replaces the whole config, so what goes back is exactly what came
+// in with the pattern fields changed. baseVersion makes AIOMetadata refuse
+// (409) if the config was saved elsewhere in between, instead of overwriting
+// it. The id may be an alias; AIOMetadata resolves those on these routes too.
+//
+// One pattern is enough for both shapes: the Default URL carries
+// "shape={shape}", and AIOMetadata falls back to a {shape} poster pattern when
+// its landscape pattern is empty. A landscape pattern pointing at this server
+// is therefore cleared; one pointing anywhere else is the user's own choice and
+// is left alone.
+// ─────────────────────────────────────────────────────────────────────────────
+const AIOM_URL_KEY = 'postersplus_aiom_url';
+
+/** The instance base and config id from an install, configure or stremio://
+ *  link. The base keeps any path prefix in front of /stremio/. */
+function parseAiomUrl(raw) {
+  let text = (raw || '').trim();
+  if (/^stremio:\/\//i.test(text)) text = 'https://' + text.slice('stremio://'.length);
+  let u;
+  try { u = new URL(text); } catch { return null; }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  const m = u.pathname.match(/^(.*?)\/stremio\/([^/]+)(?:\/|$)/);
+  if (!m) return null;
+  let id;
+  try { id = decodeURIComponent(m[2]); } catch { return null; }
+  if (!id) return null;
+  return { base: u.origin + m[1], id };
+}
+
+function _aiomMsg(text, err = false) {
+  const msg = document.getElementById('aiom-msg');
+  msg.textContent = text;
+  msg.className = err ? 'report-msg err' : 'report-msg';
+  msg.hidden = !text;
+}
+
+function openAiomModal() {
+  closeCopyMenu();
+  let saved = '';
+  try { saved = localStorage.getItem(AIOM_URL_KEY) || ''; } catch (e) {}
+  const urlInput = document.getElementById('aiom-url');
+  if (!urlInput.value) urlInput.value = saved;
+  // Passwords are cleared on close, not here: clearing on open would wipe one
+  // the browser's password manager has just filled in.
+  document.getElementById('aiom-addon-password-row').hidden = true;
+  document.getElementById('aiom-inputs').hidden = false;
+  document.getElementById('aiom-send').hidden = false;
+  document.getElementById('aiom-send').disabled = false;
+  _aiomMsg('');
+  const modal = document.getElementById('aiom-modal');
+  if (modal.classList.contains('open')) return;
+  modal.classList.add('open');
+  _pushModalState('aiom-modal');
+  (urlInput.value ? document.getElementById('aiom-password') : urlInput).focus();
+}
+
+function closeAiomModal() {
+  document.getElementById('aiom-modal').classList.remove('open');
+  // Never leave a password sitting in a hidden field.
+  document.getElementById('aiom-password').value = '';
+  document.getElementById('aiom-addon-password').value = '';
+  _popModalState('aiom-modal');
+}
+
+/** AIOMetadata's JSON API. A network failure becomes a readable reason: from
+ *  an HTTPS page an http:// instance is blocked as mixed content, and the
+ *  browser hides which of that, DNS or a private-network block it was. */
+async function _aiomFetch(base, path, opts = {}) {
+  let res;
+  try {
+    res = await fetch(base + path, {
+      ...opts,
+      headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
+      credentials: 'omit',
+      cache: 'no-store',
+    });
+  } catch (e) {
+    const mixed = location.protocol === 'https:' && base.startsWith('http:');
+    throw new Error(mixed
+      ? 'Your browser blocks an http:// AIOMetadata from this https:// page. Use its https:// address.'
+      : `Couldn't reach AIOMetadata at ${base}. Check the URL. If it sits behind a login `
+        + '(Authelia, Pangolin, Authentik…), let /api/config/load/, /api/config/update/ and '
+        + '/api/config/is-trusted/ through without it; AIOMetadata still asks for the password.');
+  }
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  return { status: res.status, ok: res.ok, data };
+}
+
+/** Lets the password manager offer to save the login, only once it has
+ *  worked. Browsers take a script-handled form as submitted when it disappears
+ *  after a request (Chrome, Firefox), so the fields are hidden rather than
+ *  cleared; closeAiomModal clears them. Chrome and Edge also get the explicit
+ *  Credential Management call. Extensions such as Bitwarden go by the submit. */
+function _offerToSaveAiomLogin() {
+  const id = document.getElementById('aiom-url').value.trim();
+  const password = document.getElementById('aiom-password').value;
+  document.getElementById('aiom-inputs').hidden = true;
+  document.getElementById('aiom-send').hidden = true;
+  if (window.PasswordCredential && navigator.credentials?.store) {
+    try {
+      navigator.credentials.store(new PasswordCredential({ id, password, name: 'AIOMetadata' }))
+        .catch(() => {});
+    } catch (e) {}
+  }
+}
+
+/** Whether a pattern draws from this server: same origin and path as the URL
+ *  being sent, which is how a landscape URL copied from here looks. */
+function _isOwnPattern(pattern, ownUrl) {
+  try {
+    const a = new URL(pattern.replace(/\{[a-z_]+\??\}/g, 'x'));
+    const b = new URL(ownUrl.replace(/\{[a-z_]+\??\}/g, 'x'));
+    return a.origin === b.origin && a.pathname === b.pathname;
+  } catch { return false; }
+}
+
+async function pushToAiom() {
+  const btn = document.getElementById('aiom-send');
+  if (btn.disabled) return;
+  const target = parseAiomUrl(document.getElementById('aiom-url').value);
+  const password = document.getElementById('aiom-password').value;
+  const addonRow = document.getElementById('aiom-addon-password-row');
+  const addonPassword = document.getElementById('aiom-addon-password').value || undefined;
+  if (!target) {
+    _aiomMsg('Paste the install URL AIOMetadata gave you — it contains /stremio/ followed by your id.', true);
+    return;
+  }
+  if (!password) { _aiomMsg('Enter your AIOMetadata password.', true); return; }
+
+  btn.disabled = true;
+  _aiomMsg('Loading your AIOMetadata config…');
+  try {
+    const id = encodeURIComponent(target.id);
+    const loaded = await _aiomFetch(target.base, `/api/config/load/${id}`, {
+      method: 'POST', body: JSON.stringify({ password, addonPassword }),
+    });
+    if (!loaded.ok || !loaded.data?.config) {
+      const err = loaded.data?.error || '';
+      if (/addon password/i.test(err)) {
+        // Shown only when the instance asks for it: most never do.
+        const wasHidden = addonRow.hidden;
+        addonRow.hidden = false;
+        _aiomMsg(wasHidden ? 'This AIOMetadata needs its addon password as well.' : err, true);
+        if (wasHidden) document.getElementById('aiom-addon-password').focus();
+        return;
+      }
+      if (loaded.status === 429) { _aiomMsg('AIOMetadata is limiting attempts. Wait a minute and try again.', true); return; }
+      if (!loaded.data) {
+        _aiomMsg(`${target.base} doesn't look like an AIOMetadata instance (${loaded.status}).`, true);
+        return;
+      }
+      _aiomMsg(err || `AIOMetadata refused the request (${loaded.status}).`, true);
+      return;
+    }
+
+    const config = loaded.data.config;
+    const url = buildTemplateUrl('standard');
+    let changed = (config.customPosterUrlPattern || '') !== url;
+    config.customPosterUrlPattern = url;
+    config.posterRatingProvider = 'custom';
+    let keptLandscape = false;
+    const landscape = (config.customLandscapeUrlPattern || '').trim();
+    if (landscape) {
+      if (_isOwnPattern(landscape, url)) {
+        config.customLandscapeUrlPattern = '';
+        changed = true;
+      } else {
+        keptLandscape = true;
+      }
+    }
+
+    _aiomMsg('Saving…');
+    const saved = await _aiomFetch(target.base, `/api/config/update/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ config, password, addonPassword,
+                             baseVersion: config.configVersion ?? undefined }),
+    });
+    if (saved.status === 409) {
+      _aiomMsg('Your AIOMetadata config changed while this was sending. Send again to use the latest one.', true);
+      return;
+    }
+    if (!saved.ok) {
+      _aiomMsg(saved.data?.error || `AIOMetadata refused the save (${saved.status}).`, true);
+      return;
+    }
+    try { localStorage.setItem(AIOM_URL_KEY, document.getElementById('aiom-url').value.trim()); } catch (e) {}
+    _offerToSaveAiomLogin();
+    let done = changed
+      ? 'Done — AIOMetadata now uses these settings. No reinstall needed; apps may show old posters they already cached for a while.'
+      : 'AIOMetadata already had these settings — nothing to change.';
+    if (keptLandscape) done += ' Your separate AIOMetadata landscape pattern points elsewhere, so it was left as it was.';
+    _aiomMsg(done);
+    flashButton(document.getElementById('copy-config-btn'), 'Sent');
+  } catch (e) {
+    _aiomMsg(e.message || String(e), true);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 /** Briefly swaps a button's label to confirm an action, then restores it. */
