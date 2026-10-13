@@ -6423,7 +6423,11 @@ const rbSitesId = (landscape = c('tog-landscape')) => _rbPrefix(landscape) + 'ra
 const rbKindsId = (landscape = c('tog-landscape')) => _rbPrefix(landscape) + 'rating-badge-kinds';
 
 function setRatingBadges(ids) {
-  document.getElementById(rbSitesId()).value = ratingBadgeSources(ids.join(',')).join(',');
+  const sites = ratingBadgeSources(ids.join(','));
+  document.getElementById(rbSitesId()).value = sites.join(',');
+  // A removed site's kinds go with it: added back, it shows on every kind.
+  const kinds = document.getElementById(rbKindsId());
+  kinds.value = kinds.value.split(',').filter(e => sites.includes(e.split(':')[0])).join(',');
   buildRatingBadgeList(); updateRatingFields(); build(); queuePreviewReload();
 }
 
@@ -6482,6 +6486,7 @@ function ratingBadgeKindsFrom(raw) {
 function buildRatingBadgeList() {
   const container = document.getElementById('rating-badges-list');
   if (!container) return;
+  _rbListShown = [rbSitesId(), vEl(rbSitesId()), vEl(rbKindsId())].join('|');
   const order = ratingBadgeSources(vEl(rbSitesId()));
   const full = order.length >= RATING_BADGES_MAX;
   const kinds = ratingBadgeKinds();
@@ -8777,8 +8782,11 @@ function updateTrendingStyleFields() {
 
 // The Rating Badges group serves both shapes: the portrait's modes that print
 // a score, and landscape's own switch.
+let _rbListShown = null;
 function updateRatingBadgeRows() {
-  buildRatingBadgeList();   // the shape on screen may draw another list
+  // The shape on screen, or Own Sites, may have switched the list it draws.
+  const listShown = [rbSitesId(), vEl(rbSitesId()), vEl(rbKindsId())].join('|');
+  if (listShown !== _rbListShown) buildRatingBadgeList();
   const hideRating = c('tog-hide-rating');
   const parts = _ratingLabelParts();
   const shown = c('tog-landscape') ? c('tog-landscape-rating-badges') && parts.badges : parts.badges;

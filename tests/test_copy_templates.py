@@ -290,6 +290,28 @@ class ShareSettingsTests(unittest.TestCase):
             with self.assertRaisesRegex(unittest.SkipTest, "install Node.js"):
                 self.run_share_js("")
 
+    def test_landscape_rating_badge_sites_are_their_own_with_own_sites_on(self):
+        # The configurator's helpers for landscape_rating_badge_list: the list
+        # control edits the on-screen shape's list, and each URL param is
+        # built from its own list and kinds.
+        self.run_share_js(r"""
+            const state = { 'tog-landscape': true, 'tog-landscape-rating-badges-own': false,
+              'cfg-rating-badges': 'imdb,tomatoes', 'cfg-rating-badge-kinds': 'tomatoes:mfs',
+              'cfg-landscape-rating-badges': 'letterboxd,trakt', 'cfg-landscape-rating-badge-kinds': 'letterboxd:mt' };
+            const c = id => state[id] === true, vEl = id => state[id];
+            assert.equal(rbSitesId(), 'cfg-rating-badges');
+            assert.equal(ratingBadgesParam(true), 'imdb,tomatoes:ma');
+            state['tog-landscape-rating-badges-own'] = true;
+            assert.equal(rbSitesId(), 'cfg-landscape-rating-badges');
+            assert.equal(rbKindsId(false), 'cfg-rating-badge-kinds');
+            assert.equal(ratingBadgesParam(true), 'letterboxd:mt,trakt');
+            assert.equal(ratingBadgesParam(), 'imdb,tomatoes:ma');
+            assert.equal(ratingBadgeKindsFrom('Letterboxd:TM,trakt,bogus:m,imdb:mtfs,kitsu:a'),
+                         'letterboxd:mt,kitsu:fs');
+        """, extra=("RATING_BADGE_SOURCES", "RATING_BADGES_MAX", "RATING_BADGE_KINDS", "RATING_BADGE_ALL",
+                    "rbKindSet", "ratingBadgeSources", "_rbPrefix", "rbSitesId", "rbKindsId",
+                    "ratingBadgeKinds", "ratingBadgesParam", "ratingBadgeKindsFrom"))
+
     def test_only_explicit_public_origins_are_preserved(self):
         public = ["https://postersplus.cc", "https://postersplus.slokker.cc",
                   "https://postersplus.stremio.ru", "https://postersplus.elfhosted.com",
