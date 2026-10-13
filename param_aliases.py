@@ -304,9 +304,11 @@ def _full_number(text: str) -> str:
     """".8" -> "0.80", as the configurator writes a weight spelled out, so a
     short URL and its long twin share a composite cache key."""
     try:
-        return f"{float(text):.2f}"
+        x = float(text)
     except ValueError:
         return text
+    # More precision than the configurator writes is kept as given.
+    return f"{x:.2f}" if round(x, 2) == x else text.strip()
 
 
 def _compact_number(text: str) -> str:
@@ -320,9 +322,15 @@ def _compact_number(text: str) -> str:
 
 
 def needs_expand(pairs: Iterable[tuple[str, str]]) -> bool:
-    """Whether expand would change *pairs*: a short name, or a weights list
-    (which may name its sources short)."""
-    return any(k in LONG or k in WEIGHT_PARAMS for k, _v in pairs)
+    """Whether expand would change *pairs*: a short name, or a source code
+    in a weights list.  A URL spelled out in full is left as it came."""
+    for k, v in pairs:
+        if k in LONG:
+            return True
+        if k in WEIGHT_PARAMS and any(
+                part.partition(":")[0].strip().lower() in WEIGHT_SOURCES_LONG for part in v.split(",")):
+            return True
+    return False
 
 
 def expand(pairs: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:

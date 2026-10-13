@@ -106,6 +106,9 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(param_aliases.expand([("tv_weights", "trakt:0.8")]), [("tv_weights", "trakt:0.8")])
         q = self._through_middleware("/poster", "tmdb_id=1&movie_weights=lb:.5,rt:.5")
         self.assertEqual(q["movie_weights"], "letterboxd:0.50,tomatoes:0.50")
+        self.assertEqual(param_aliases.expand([("mw", "lb:.805")]), [("movie_weights", "letterboxd:.805")])
+        self.assertFalse(param_aliases.needs_expand([("movie_weights", "letterboxd:0.8"), ("tmdb_id", "1")]))
+        self.assertTrue(param_aliases.needs_expand([("movie_weights", "lb:.8")]))
 
     def test_weight_source_codes_are_permanent_and_clash_with_no_source(self):
         import config
