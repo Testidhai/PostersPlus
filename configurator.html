@@ -3163,7 +3163,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                 </label>
               </div>
               <div class="toggle-row landscape-only" id="landscape-rating-badges-row">
-                <span class="toggle-label" data-tip="Show sites' own scores, each behind its logo, in place of the score on the info line. The sites are chosen under Rating Badges below, shared with the portrait. Short of room the genre goes first, then the year, then badges from the end of the list.">Rating Badges</span>
+                <span class="toggle-label" data-tip="Show sites' own scores, each behind its logo, in place of the score on the info line. The sites are chosen under Rating Badges below: the portrait's, or landscape's own with Own Sites on there. Short of room the genre goes first, then the year, then badges from the end of the list.">Rating Badges</span>
                 <label class="toggle-switch">
                   <input type="checkbox" id="tog-landscape-rating-badges" onchange="updateRatingBadgeRows(); build(); queuePreviewReload()">
                   <div class="toggle-track"><div class="toggle-thumb"></div></div>
@@ -3238,6 +3238,15 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
             </div>
             <div class="cfg-sep" id="rating-badges-fields" style="display:none;">
               <span class="group-title">Rating Badges</span>
+              <div class="toggle-row landscape-only" id="landscape-rating-badges-own-row">
+                <span class="toggle-label" data-tip="Choose landscape's sites apart from the portrait's, so one URL can show, say, three badges on the poster and one on the wide art. Off, landscape shows the portrait's sites. Show At Most, Badge Scores and Badge Style stay shared.">Own Sites</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="tog-landscape-rating-badges-own" onchange="toggleLandscapeRatingBadgesOwn()">
+                  <div class="toggle-track"><div class="toggle-thumb"></div></div>
+                </label>
+              </div>
+              <input type="hidden" id="cfg-landscape-rating-badges" value="" data-default="">
+              <input type="hidden" id="cfg-landscape-rating-badge-kinds" value="" data-default="">
               <div class="field">
                 <label class="field-label" data-tip="Show these sites' own scores, each behind its logo, in place of the ★ and the weighted score: after the genre in Clean, before each score in Minimalist, and after the year and genre in the Bar (when its label shows the rating), and in place of the score on a landscape with its Rating Badges switch on. The rest of the line comes first; badges fill whatever room is left, top of the list first. Titles missing a site's score skip it, and ones with none of them keep the weighted score. Drag to reorder, + to add, ✕ to remove. Movie, TV and Anime choose which titles each site shows on.">Sites</label>
                 <input type="hidden" id="cfg-rating-badges" value="" data-default="">
@@ -6407,8 +6416,23 @@ function ratingBadgeSources(value) {
   return out.slice(0, RATING_BADGES_MAX);
 }
 
+// Landscape's own sites (landscape_rating_badge_list) with Own Sites on; the
+// list control edits whichever list the shape on screen draws.
+const _rbPrefix = landscape => landscape && c('tog-landscape-rating-badges-own') ? 'cfg-landscape-' : 'cfg-';
+const rbSitesId = (landscape = c('tog-landscape')) => _rbPrefix(landscape) + 'rating-badges';
+const rbKindsId = (landscape = c('tog-landscape')) => _rbPrefix(landscape) + 'rating-badge-kinds';
+
 function setRatingBadges(ids) {
-  document.getElementById('cfg-rating-badges').value = ratingBadgeSources(ids.join(',')).join(',');
+  document.getElementById(rbSitesId()).value = ratingBadgeSources(ids.join(',')).join(',');
+  buildRatingBadgeList(); updateRatingFields(); build(); queuePreviewReload();
+}
+
+// Turned on, landscape starts from the portrait's sites rather than none.
+function toggleLandscapeRatingBadgesOwn() {
+  if (c('tog-landscape-rating-badges-own') && !vEl('cfg-landscape-rating-badges')) {
+    _setEl('cfg-landscape-rating-badges', vEl('cfg-rating-badges'));
+    _setEl('cfg-landscape-rating-badge-kinds', vEl('cfg-rating-badge-kinds'));
+  }
   buildRatingBadgeList(); updateRatingFields(); build(); queuePreviewReload();
 }
 
@@ -6420,9 +6444,9 @@ const RATING_BADGE_KINDS = [['m', 'Movie', 'movies'], ['t', 'TV', 'TV shows'],
                             ['f', 'Anime Movie', 'anime movies'], ['s', 'Anime TV', 'anime series']];
 const RATING_BADGE_ALL = 'mtfs';
 const rbKindSet = k => RATING_BADGE_ALL.split('').filter(c => k.replace('a', 'fs').includes(c)).join('');
-function ratingBadgeKinds() {
+function ratingBadgeKinds(id = rbKindsId()) {
   const out = {};
-  for (const entry of (vEl('cfg-rating-badge-kinds') || '').split(',')) {
+  for (const entry of (vEl(id) || '').split(',')) {
     const [id, kinds] = entry.split(':');
     if (id && kinds !== undefined) out[id] = kinds;
   }
@@ -6434,21 +6458,31 @@ function setRatingBadgeKind(id, kind, on) {
   on ? now.add(kind) : now.delete(kind);
   const kinds = RATING_BADGE_KINDS.map(([k]) => k).filter(k => now.has(k)).join('');
   if (kinds === RATING_BADGE_ALL) delete all[id]; else all[id] = kinds;
-  document.getElementById('cfg-rating-badge-kinds').value =
+  document.getElementById(rbKindsId()).value =
     Object.entries(all).map(([p, k]) => `${p}:${k}`).join(',');
   buildRatingBadgeList(); build(); queuePreviewReload();
 }
-// The rating_badges parameter: the drawn list, each narrowed site with its kinds.
-function ratingBadgesParam() {
-  const kinds = ratingBadgeKinds();
-  return ratingBadgeSources(vEl('cfg-rating-badges'))
+// The rating_badges parameter: the drawn list, each narrowed site with its
+// kinds — the portrait's, or with *landscape* the list landscape draws.
+function ratingBadgesParam(landscape = false) {
+  const kinds = ratingBadgeKinds(rbKindsId(landscape));
+  return ratingBadgeSources(vEl(rbSitesId(landscape)))
     .map(id => kinds[id] !== undefined ? `${id}:${kinds[id].replace('fs', 'a')}` : id).join(',');
+}
+
+// The narrowed kinds of an imported rating_badges value, as the hidden field
+// keeps them ("imdb:mt,kitsu:fs").
+function ratingBadgeKindsFrom(raw) {
+  return (raw || '').toLowerCase().split(',')
+    .map(t => t.trim().split(':')).filter(([id, k]) => k !== undefined && ratingBadgeSources(id).length)
+    .map(([id, k]) => [id, rbKindSet(k)])
+    .filter(([, k]) => k !== RATING_BADGE_ALL).map(([id, k]) => `${id}:${k}`).join(',');
 }
 
 function buildRatingBadgeList() {
   const container = document.getElementById('rating-badges-list');
   if (!container) return;
-  const order = ratingBadgeSources(vEl('cfg-rating-badges'));
+  const order = ratingBadgeSources(vEl(rbSitesId()));
   const full = order.length >= RATING_BADGES_MAX;
   const kinds = ratingBadgeKinds();
   const row = (src, idx) => {
@@ -6504,7 +6538,7 @@ function _rbClearOver() {
 }
 function _rbMove(srcId, targetId) {
   if (!srcId || srcId === targetId) return;
-  const order = ratingBadgeSources(vEl('cfg-rating-badges'));
+  const order = ratingBadgeSources(vEl(rbSitesId()));
   const from = order.indexOf(srcId), to = order.indexOf(targetId);
   if (from === -1 || to === -1) return;
   order.splice(from, 1);
@@ -7413,12 +7447,17 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
     }
     const _lls = n('cfg-landscape-logo-scale');
     if (Math.abs(_lls - 1) > 1e-6) params.set('landscape_logo_scale', _lls.toFixed(2));
-    // The sites are the portrait's list, sent here too for a landscape-only URL.
-    if (c('tog-landscape-rating-badges') && vEl('cfg-rating-badges')) {
+    // The sites are the portrait's list, sent here too for a landscape-only
+    // URL, or with Own Sites landscape's own under a name of their own (the
+    // saved settings keep that choice even while the switch above is off).
+    const _lOwnSites = c('tog-landscape-rating-badges-own');
+    const _lSites = vEl(rbSitesId(true));
+    if (_lOwnSites && full) params.set('landscape_rating_badge_list', ratingBadgesParam(true));
+    if (c('tog-landscape-rating-badges') && _lSites) {
       params.set('landscape_rating_badges', 'true');
-      params.set('rating_badges', ratingBadgesParam());
+      params.set(_lOwnSites ? 'landscape_rating_badge_list' : 'rating_badges', ratingBadgesParam(_lOwnSites));
       const _rbMax = ni('cfg-rating-badge-max');
-      if (_rbMax && _rbMax < ratingBadgeSources(vEl('cfg-rating-badges')).length)
+      if (_rbMax && _rbMax < ratingBadgeSources(_lSites).length)
         params.set('rating_badge_max', _rbMax);
       if (vEl('cfg-rating-badge-scale') === 'normalized') params.set('rating_badge_scale', 'normalized');
       if (vEl('cfg-rating-badge-style') === 'mono') params.set('rating_badge_style', 'mono');
@@ -8739,6 +8778,7 @@ function updateTrendingStyleFields() {
 // The Rating Badges group serves both shapes: the portrait's modes that print
 // a score, and landscape's own switch.
 function updateRatingBadgeRows() {
+  buildRatingBadgeList();   // the shape on screen may draw another list
   const hideRating = c('tog-hide-rating');
   const parts = _ratingLabelParts();
   const shown = c('tog-landscape') ? c('tog-landscape-rating-badges') && parts.badges : parts.badges;
@@ -8748,7 +8788,7 @@ function updateRatingBadgeRows() {
   // Badges stand in for the score's ★: the landscape Rating Separator's
   // Star and Bullet + Star then draw a bullet, and Minimalist's has nothing
   // in front of the score to style at all (see _updateMinimalistRows).
-  const lBadges = c('tog-landscape-rating-badges') && !!vEl('cfg-rating-badges');
+  const lBadges = c('tog-landscape-rating-badges') && !!vEl(rbSitesId(true));
   _hideOptions('cfg-landscape-rating-sep', lBadges ? ['star', 'bullet_star'] : []);
 }
 
@@ -9681,11 +9721,11 @@ function updateRatingFields() {
   document.getElementById('minimalist-score10-row').style.display   = (mode === 3 && !hideRating && labelParts.printedScore) ? '' : 'none';
   document.getElementById('bar-score10-row').style.display          = (labelParts.barScore && !hideRating) ? '' : 'none';
   updateRatingBadgeRows();
-  document.getElementById('rating-badge-scale-field').style.display = vEl('cfg-rating-badges') ? '' : 'none';
+  document.getElementById('rating-badge-scale-field').style.display = vEl(rbSitesId()) ? '' : 'none';
   // A cap means something once there is more than one site to choose from.
   document.getElementById('rating-badge-max-field').style.display =
-    ratingBadgeSources(vEl('cfg-rating-badges')).length > 1 ? '' : 'none';
-  document.getElementById('rating-badge-style-field').style.display = vEl('cfg-rating-badges') ? '' : 'none';
+    ratingBadgeSources(vEl(rbSitesId())).length > 1 ? '' : 'none';
+  document.getElementById('rating-badge-style-field').style.display = vEl(rbSitesId()) ? '' : 'none';
   // The line's own controls, which the Bar replaces.  (The Rating Bar's line
   // still prints the score.)
   const lMode = vEl('cfg-landscape-rating-mode') || 'line';
@@ -10172,7 +10212,9 @@ const _LANDSCAPE_ONLY_CONTROLS = ['cfg-landscape-art', ...LANDSCAPE_SOURCE_IDS, 
                                   'cfg-landscape-badge-shape', 'cfg-landscape-badge-case',
                                   'tog-landscape-winner-star', 'cfg-landscape-logo-scale',
                                   ...Object.keys(LANDSCAPE_BADGE_TUNING),
-                                  'tog-landscape-rating-badges', 'tog-landscape-poster-crop',
+                                  'tog-landscape-rating-badges', 'tog-landscape-rating-badges-own',
+                                  'cfg-landscape-rating-badges', 'cfg-landscape-rating-badge-kinds',
+                                  'tog-landscape-poster-crop',
                                   'cfg-landscape-rating-mode'];
 // Everything both shapes read, or that a preset never carries (identity and
 // keys — settingsOnly leaves them alone in any case).
@@ -10637,6 +10679,10 @@ function importUrl(urlStr, { silent = false, settingsOnly = false, preserveClien
       _setEl(id, p.get(param) || def.toFixed(dec));
     _setEl('cfg-landscape-logo-scale',  p.get('landscape_logo_scale') || '1.00');
     _setEl('tog-landscape-rating-badges', p.get('landscape_rating_badges') || 'false');
+    { const _lrbl = p.get('landscape_rating_badge_list');
+      _setEl('tog-landscape-rating-badges-own', _lrbl !== null);
+      _setEl('cfg-landscape-rating-badges', ratingBadgeSources(_lrbl || '').join(','));
+      _setEl('cfg-landscape-rating-badge-kinds', ratingBadgeKindsFrom(_lrbl)); }
   }
   // Anime ids carry no setting to restore: which ids a URL may use is decided
   // by the copy template now, so stremio_id / anilist_id / kitsu_id on an
@@ -10787,10 +10833,7 @@ function importUrl(urlStr, { silent = false, settingsOnly = false, preserveClien
   if (p.has('rating_badges') || p.has('rating_display_mode')) {
     _setEl('cfg-rating-badges', ratingBadgeSources(p.get('rating_badges') || '').join(','));
     // The kinds ride on the same parameter ("imdb:mt"); keep only narrowed ones.
-    _setEl('cfg-rating-badge-kinds', (p.get('rating_badges') || '').toLowerCase().split(',')
-      .map(t => t.trim().split(':')).filter(([id, k]) => k !== undefined && ratingBadgeSources(id).length)
-      .map(([id, k]) => [id, rbKindSet(k)])
-      .filter(([, k]) => k !== RATING_BADGE_ALL).map(([id, k]) => `${id}:${k}`).join(','));
+    _setEl('cfg-rating-badge-kinds', ratingBadgeKindsFrom(p.get('rating_badges')));
     _setEl('cfg-rating-badge-scale', p.get('rating_badge_scale') === 'normalized' ? 'normalized' : 'native');
     _setEl('cfg-rating-badge-max', ['1', '2', '3', '4', '5'].includes(p.get('rating_badge_max')) ? p.get('rating_badge_max') : '0');
     _setEl('cfg-rating-badge-style', p.get('rating_badge_style') === 'mono' ? 'mono' : 'color');

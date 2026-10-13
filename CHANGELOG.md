@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Landscape rating badge sites of its own
+
+- **Rating Badges → Own Sites** (landscape view) gives the landscape its own
+  list of rating sites, Movie / TV / Anime choices included, instead of
+  sharing the portrait's. A `{shape}` URL can then show, say, three badges
+  on the poster and one on the wide art. Show At Most, Badge Scores and
+  Badge Style stay shared. Off by default; existing URLs render as before.
+  New URL parameter `landscape_rating_badge_list` (`_rbl`).
+
 ### Shorter rating weights in poster URLs
 
 - The rating-weight lists name each source by a short code (`mw=lb:.8,rt:.2`

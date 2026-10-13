@@ -125,6 +125,7 @@ ALIASES: dict[str, str] = {
     "landscape_logo_scale": "_ls",
     "landscape_poster_crop": "_pc",
     "landscape_rating_badges": "_rb",
+    "landscape_rating_badge_list": "_rbl",
     "landscape_rating_mode": "_rmo",
     "landscape_rating_separator": "_rs",
     "landscape_sash_mode": "_sm",

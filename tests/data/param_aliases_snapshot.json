@@ -102,6 +102,7 @@
  "landscape_poster_crop": "_pc",
  "landscape_poster_pick": "_pp",
  "landscape_rating_badges": "_rb",
+ "landscape_rating_badge_list": "_rbl",
  "landscape_rating_mode": "_rmo",
  "landscape_rating_separator": "_rs",
  "landscape_sash_mode": "_sm",

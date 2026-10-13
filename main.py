@@ -3273,8 +3273,15 @@ def build_request_config(params: dict) -> RequestConfig:
     if _mrsep in ("pip", "bullet", "star", "bullet_star"):
         cfg.minimalist_rating_separator = _mrsep
 
-    cfg.rating_badges = rating_badges.parse_providers(params.get("rating_badges"))
-    cfg.rating_badge_kinds = rating_badges.parse_kinds(params.get("rating_badges"))
+    # landscape_rating_badge_list: landscape's own sites, spelled as
+    # rating_badges is, so a "{shape}" URL can show different ones on each
+    # layout.  Absent, landscape shows the portrait's; present but empty, none.
+    # (landscape_rating_badges was the on/off switch long before.)
+    _rb_raw = params.get("rating_badges")
+    if cfg.shape == "landscape" and params.get("landscape_rating_badge_list") is not None:
+        _rb_raw = params.get("landscape_rating_badge_list")
+    cfg.rating_badges = rating_badges.parse_providers(_rb_raw)
+    cfg.rating_badge_kinds = rating_badges.parse_kinds(_rb_raw)
     cfg.rating_badge_max = _i("rating_badge_max", 0, 0, 6)
     if cfg.rating_badge_max >= len([p for p in cfg.rating_badges.split(",") if p]):
         cfg.rating_badge_max = 0   # no fewer than the list: the same render as no cap
