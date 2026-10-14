@@ -284,7 +284,8 @@ class ShareSettingsTests(unittest.TestCase):
         names = ["SHARE_ORIGIN", "SHARE_LEGACY_ORIGIN", "_SHARE_DROP", "shareOrigin",
                  "buildShareUrl", "isShareUrl", "applyImport", "decodePlaceholders",
                  "_isBoolParam", "shortenParams", "shortenUrl", "expandParams",
-                 "_WEIGHT_PARAMS", "_mapWeights", "_unescapeListChars", *extra]
+                 "_WEIGHT_PARAMS", "_mapWeights", "_unescapeListChars",
+                 "fullSashPriorities", "parseSashPriority", "getSashPriorityParam", *extra]
         script = "const source = " + json.dumps(scripts.source) + ";\n"
         script += r"""
             const assert = require('node:assert/strict');
@@ -398,8 +399,12 @@ class ShareSettingsTests(unittest.TestCase):
               p.append('access_key', 'another-secret');
               return 'https://private.example/poster?' + p;
             }
+            function parseSashPriority(raw) {
+              assert.equal(raw, 'default,awards');
+              return {order: ['awards', 'imdb'], disabled: new Set()};
+            }
             function getSashPriorityParam(options) {
-              assert.deepEqual(options, {compact: false});
+              assert.deepEqual(options, {compact: false, order: ['awards', 'imdb'], disabled: new Set()});
               return 'awards,imdb';
             }
             assert.equal(buildShareUrl(), 'https://postersplus.cc/poster?shape={shape}'
