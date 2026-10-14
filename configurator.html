@@ -3512,8 +3512,10 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
                 <option value="edge_right">Right Edge</option>
               </select>
             </div>
-            <div class="field portrait-only" id="sash-text-color-field" style="display:none;">
-              <label class="field-label" data-tip="Hex colour for the sash/notch text. Leave blank for the mode default.">Text Colour</label>
+            <!-- Kept per shape.  On landscape it colours the trending ribbon alone
+                 (the badge has its own), so it shows there for a ribbon. -->
+            <div class="field" id="sash-text-color-field" style="display:none;">
+              <label class="field-label" data-tip="Hex colour for the sash/notch text and the trending ribbon's. On landscape, the ribbon's alone. Leave blank for the mode default.">Text Colour</label>
               <div class="color-field">
                 <input type="text" id="cfg-sash-text-color" placeholder="Default" maxlength="6"
                        oninput="_syncSashColorPicker(); build(); queuePreviewReload()">
@@ -3920,6 +3922,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
             <div class="cfg-sep">
               <span class="group-title" data-tip="Drag to reorder. Click ✕ to disable a sash — the first matching sash wins.">Priority</span>
               <div class="sash-list" id="sash-priority-list"></div>
+              <input type="hidden" id="cfg-sash-priority" value="">
             </div>
           </div>        </div>
 
@@ -5730,9 +5733,60 @@ function enableSash(slotId) {
   buildSashList(); build(); queuePreviewReload(); saveSashOrder();
 }
 
-function getSashPriorityParam({ compact = true } = {}) {
-  const parts = [...sashOrder];
-  sashDisabled.forEach(id => parts.push('-' + id));
+// A sash_priority value as the order and the disabled slots it denotes, or
+// null for one that cannot be read yet.  An empty one is the default order.
+// A diff can only be expanded against the server's default order.  Settings
+// saved before they were stored as the plain list still hold one, and the
+// startup restore reaches here before /server-caps has answered — the order
+// loadSashOrder() already put back stands rather than an unexpandable diff.
+function parseSashPriority(raw) {
+  if (!String(raw || '').trim())
+    return { order: SASH_SLOTS.filter(s => !SASH_DEFAULT_DISABLED.has(s.id)).map(s => s.id),
+             disabled: new Set(SASH_DEFAULT_DISABLED) };
+  if (!serverCaps.sash_priority_default && String(raw).split(',')[0].trim().startsWith('default')) return null;
+  let rawTokens = String(raw || '').split(',').map(s => s.trim()).filter(Boolean);
+  const known  = new Set(SASH_SLOTS.map(s => s.id));
+  // The diff form — "default,-cult,festival@0" — has to expand back to a
+  // plain ordered list before the legacy handling below can read it. Without
+  // this every token would fail the `known` test and import would land on
+  // "every sash disabled", quietly discarding the order it was handed.
+  // Each seed counts positions in the default order of its day (an older
+  // one's comes from sash_priority_diff_bases), as the server reads it.
+  const _diffBases = serverCaps.sash_priority_diff_bases || {};
+  if (rawTokens[0] === serverCaps.sash_priority_diff_seed) {
+    rawTokens = expandSashDiff(rawTokens.slice(1));
+  } else if (Array.isArray(_diffBases[rawTokens[0]])) {
+    rawTokens = expandSashDiff(rawTokens.slice(1), _diffBases[rawTokens[0]]);
+  }
+  // Back-compat: the legacy combined "structural" token expands, in place, to
+  // its granular slots in the same priority order it used internally
+  // (short_film > mini_series > binge_ready) so importing an old URL keeps the
+  // same behaviour instead of silently dropping the sash.
+  const LEGACY_EXPANSIONS = { structural: ['short_film', 'mini_series', 'binge_ready'] };
+  const tokens = [];
+  for (const t of rawTokens) {
+    const neg  = t.startsWith('-');
+    const bare = neg ? t.slice(1) : t;
+    if (LEGACY_EXPANSIONS[bare]) {
+      LEGACY_EXPANSIONS[bare].forEach(g => tokens.push((neg ? '-' : '') + g));
+    } else {
+      tokens.push(t);
+    }
+  }
+  // Only the slots explicitly listed (leading '-' tokens are exclusions) are
+  // enabled. Anything absent from the imported config — including sashes added
+  // in a newer version — is treated as disabled rather than force-enabled, so
+  // it lands in the disabled list ready for the user to opt into.
+  const active   = tokens.filter(t => !t.startsWith('-') && known.has(t));
+  const disabled = SASH_SLOTS.map(s => s.id).filter(id => !active.includes(id));
+  return { order: active, disabled: new Set(disabled) };
+}
+
+// The list on screen by default; *order* and *disabled* name another (the
+// other shape's, see cfg-sash-priority).
+function getSashPriorityParam({ compact = true, order = sashOrder, disabled = sashDisabled } = {}) {
+  const parts = [...order];
+  disabled.forEach(id => parts.push('-' + id));
   const full = parts.join(',');
   if (!compact) return full;
 
@@ -5742,7 +5796,7 @@ function getSashPriorityParam({ compact = true } = {}) {
   // it is not (every sash disabled, or a wholesale reordering) the full list
   // still wins and still goes out. Both forms parse, so this only ever picks
   // the shorter spelling of the same thing.
-  const diff = buildSashDiff();
+  const diff = buildSashDiff(order);
   // A bare seed means nothing was changed, so hand back the full order and let
   // omitServerDefaults drop the parameter altogether — one mechanism for "this
   // is the default", rather than a second one that special-cases the seed.
@@ -5784,25 +5838,25 @@ function expandSashDiff(tokens, base = serverCaps.sash_priority_default) {
 // default order. Returns null when the server has not told us what that order
 // is, so an unreachable /server-caps degrades to the full list rather than to
 // a wrong one.
-function buildSashDiff() {
+function buildSashDiff(order = sashOrder) {
   const base = serverCaps.sash_priority_default;
   const seed = serverCaps.sash_priority_diff_seed;
   if (!Array.isArray(base) || !base.length || !seed) return null;
 
   const tokens = [];
   const working = base.filter(id => {
-    if (sashOrder.includes(id)) return true;
+    if (order.includes(id)) return true;
     tokens.push('-' + id);          // dropped from the default order
     return false;
   });
   // Anything the default order does not mention has to be named outright.
-  sashOrder.forEach(id => { if (!base.includes(id)) working.push(id); });
+  order.forEach(id => { if (!base.includes(id)) working.push(id); });
 
   // Walk the target order and move each slot that is not already in place.
   // Emitting @index for only the slots that actually shifted is what keeps
   // this short for the common case of promoting one or two sashes.
-  for (let target = 0; target < sashOrder.length; target++) {
-    const id = sashOrder[target];
+  for (let target = 0; target < order.length; target++) {
+    const id = order[target];
     const at = working.indexOf(id);
     if (at === target) continue;
     if (at !== -1) working.splice(at, 1);
@@ -5810,7 +5864,7 @@ function buildSashDiff() {
     tokens.push(`${id}@${target}`);
   }
   // A slot the server would keep but the user did not order at all.
-  working.slice(sashOrder.length).forEach(id => tokens.push('-' + id));
+  working.slice(order.length).forEach(id => tokens.push('-' + id));
 
   return [seed, ...tokens].join(',');
 }
@@ -7499,11 +7553,13 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
     if (c('tog-landscape-rating-badges') && _lSites) {
       params.set('landscape_rating_badges', 'true');
       params.set(_lOwnSites ? 'landscape_rating_badge_list' : 'rating_badges', ratingBadgesParam(_lOwnSites));
-      const _rbMax = ni('cfg-rating-badge-max');
-      if (_rbMax && _rbMax < ratingBadgeSources(_lSites).length)
-        params.set('rating_badge_max', _rbMax);
-      if (vEl('cfg-rating-badge-scale') === 'normalized') params.set('rating_badge_scale', 'normalized');
-      if (vEl('cfg-rating-badge-style') === 'mono') params.set('rating_badge_style', 'mono');
+      // Landscape's own cap, scale and style, written in both states: an
+      // absent one falls back to the portrait's (omitServerDefaults drops a
+      // twin that says the same).
+      const _rbMax = parseInt(lShared['cfg-rating-badge-max'], 10) || 0;
+      params.set('landscape_rating_badge_max', _rbMax < ratingBadgeSources(_lSites).length ? _rbMax : 0);
+      params.set('landscape_rating_badge_scale', lShared['cfg-rating-badge-scale'] === 'normalized' ? 'normalized' : 'native');
+      params.set('landscape_rating_badge_style', lShared['cfg-rating-badge-style'] === 'mono' ? 'mono' : 'color');
     }
     // Only meaningful with a tinted band — there is nothing to link otherwise.
     if (['tog-vignette-color-top', 'tog-vignette-color-bottom'].some(id => lShared[id] === true || lShared[id] === 'true'))
@@ -7590,11 +7646,11 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
     if (ratingMode !== 1 && vEl('cfg-rating-badges')) {
       params.set('rating_badges', ratingBadgesParam());
       // Only a cap below the list's length changes anything.
-      const _rbMax = ni('cfg-rating-badge-max');
+      const _rbMax = parseInt(pShared['cfg-rating-badge-max'], 10) || 0;
       if (_rbMax && _rbMax < ratingBadgeSources(vEl('cfg-rating-badges')).length)
         params.set('rating_badge_max', _rbMax);
-      if (vEl('cfg-rating-badge-scale') === 'normalized') params.set('rating_badge_scale', 'normalized');
-      if (vEl('cfg-rating-badge-style') === 'mono') params.set('rating_badge_style', 'mono');
+      if (pShared['cfg-rating-badge-scale'] === 'normalized') params.set('rating_badge_scale', 'normalized');
+      if (pShared['cfg-rating-badge-style'] === 'mono') params.set('rating_badge_style', 'mono');
     }
     const _rtcEl = document.getElementById('cfg-rtc-m' + ratingMode);
     const _rtc = _rtcEl ? _rtcEl.value.trim() : '';
@@ -7648,8 +7704,10 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
   // One value for both shapes: whether a title is out does not depend on
   // which layout is drawing it.
   params.set('hide_unreleased_rating', c('tog-hide-unreleased-rating') ? 'true' : 'false');
-  // Also one value for both shapes.
-  if (vEl('cfg-meta-order')) params.set('meta_order', vEl('cfg-meta-order'));
+  // The label order, kept per shape: an absent landscape_meta_order falls
+  // back to the portrait's.
+  if (emitAll && pShared['cfg-meta-order']) params.set('meta_order', pShared['cfg-meta-order']);
+  if (emitLandscape) params.set('landscape_meta_order', lShared['cfg-meta-order'] || '');
   // And the font.
   if (vEl('cfg-label-font') !== 'inter') params.set('label_font', vEl('cfg-label-font'));
   // And the languages whose titles keep their own labels.
@@ -7660,7 +7718,7 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
   // the portrait sash's and notch's styling.
   if (showSash && emitAll) {
     if (c('tog-sash-winner-star')) params.set('sash_winner_star', 'true');
-    const _stc = document.getElementById('cfg-sash-text-color').value.trim();
+    const _stc = String(pShared['cfg-sash-text-color'] || '').trim();
     const _frostedNotch = sashMode === 'notch' && vEl('cfg-sash-badge-style') === 'frosted';
     if (/^[0-9a-fA-F]{6}$/i.test(_stc) && !_frostedNotch) params.set('sash_text_color', _stc);
     if (sashMode === 'notch') {
@@ -7700,12 +7758,21 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
   //   - Score Bar mode (mode 1) with Label Suffix = Info sash | Year + Info sash
   // Emit it whenever ANY of those is active so the user's drag-to-reorder /
   // disable choices are respected, not silently overridden by server defaults.
-  const _sashTextNeeded = (emitAll && showSash) || (emitLandscape && lShowSash)
-    || (emitAll && vEl('cfg-trending-style') !== 'sash')
+  // Kept per shape: landscape's goes out under landscape_sash_priority, for its
+  // badge or its rank mark, and falls back to the portrait's when absent.
+  const _sashTextNeeded = (emitAll && showSash)
+    || (emitAll && pShared['cfg-trending-style'] !== 'sash')
     || (emitAll && ratingMode === 1 && ni('cfg-bar-append') !== 0)
     || (emitAll && ratingMode === 4 && vEl('cfg-bar4-append') === 'sash');
   if (_sashTextNeeded) {
-    params.set('sash_priority', getSashPriorityParam());
+    params.set('sash_priority', sashPriorityParamFor(pShared['cfg-sash-priority']));
+  }
+  if (emitLandscape && (lShowSash || lShared['cfg-trending-style'] !== 'sash')) {
+    params.set('landscape_sash_priority', sashPriorityParamFor(lShared['cfg-sash-priority']));
+    // The ribbon's text colour, the one thing landscape draws with it.
+    const _lstc = String(lShared['cfg-sash-text-color'] || '').trim();
+    if (lShared['cfg-trending-style'] === 'ribbon' && lShared['cfg-trending-ribbon-style'] !== 'frosted'
+        && /^[0-9a-fA-F]{6}$/.test(_lstc)) params.set('landscape_sash_text_color', _lstc);
   }
 
   // ── Extras (graphic badges) ────────────────────────────────────────────────
@@ -7728,31 +7795,38 @@ function buildBaseParams({ usePlaceholders = false, domainOverride = null, full 
     || (emitLandscape && lBadgeMode === 7 && badgeUsesQuality(7, lGroups));
   if (_qualityShown && !params.has('badge_min_score')) params.set('badge_min_score', ni('cfg-badge-min-score'));
   if (_qualityShown && c('tog-quality-after-digital')) params.set('quality_after_digital', 'true');
-  // The cinema badge's style is one setting for both shapes, like the minimum.
-  const _cinemaShown = (emitAll && badgeMode === 7 && pGroups.some(g => gbHasSlot(g, 'cinema')))
-    || (emitLandscape && lBadgeMode === 7 && lGroups.some(g => gbHasSlot(g, 'cinema')));
-  if (_cinemaShown && vEl('cfg-badge-cinema-style') === 'frosted') params.set('badge_cinema_style', 'frosted');
-  // And whose age rating the certificate slot shows.
-  const _certShown = (emitAll && badgeMode === 7 && pGroups.some(g => gbHasSlot(g, 'cert')))
-    || (emitLandscape && lBadgeMode === 7 && lGroups.some(g => gbHasSlot(g, 'cert')));
+  // The badges' looks are kept per shape: the portrait's under the plain names,
+  // landscape's under landscape_ ones, each where that shape's badges draw it.
+  // Landscape's are written in both states, as an absent one falls back to
+  // the portrait's (omitServerDefaults drops a twin that says the same).
+  const _pGB = emitAll && badgeMode === 7, _lGB = emitLandscape && lBadgeMode === 7;
+  const _gbHas = (groups, ...slots) => groups.some(g => slots.some(slot => gbHasSlot(g, slot)));
+  const _frosted = (v, id, solid) => v[id] === 'frosted' ? 'frosted' : solid;
+  if (_pGB && _gbHas(pGroups, 'cinema') && pShared['cfg-badge-cinema-style'] === 'frosted') params.set('badge_cinema_style', 'frosted');
+  if (_lGB && _gbHas(lGroups, 'cinema')) params.set('landscape_badge_cinema_style', _frosted(lShared, 'cfg-badge-cinema-style', 'auto'));
+  // Whose age rating the certificate slot shows is one setting for both.
+  const _certShown = (_pGB && _gbHas(pGroups, 'cert')) || (_lGB && _gbHas(lGroups, 'cert'));
   if (_certShown && vEl('cfg-badge-cert-country') !== 'US') params.set('badge_cert_country', vEl('cfg-badge-cert-country'));
-  if (_certShown && vEl('cfg-badge-cert-style') === 'frosted') params.set('badge_cert_style', 'frosted');
-  // Likewise the quality badges' look, wherever graphic badges show quality.
-  const _gbQualityShown = (emitAll && badgeMode === 7 && badgeUsesQuality(7, pGroups))
-    || (emitLandscape && lBadgeMode === 7 && badgeUsesQuality(7, lGroups));
-  if (_gbQualityShown && vEl('cfg-badge-quality-style') === 'frosted') params.set('badge_quality_style', 'frosted');
-  // And the Legacy badge's style.
-  const _legacyShown = (emitAll && badgeMode === 7 && pGroups.some(g => gbHasSlot(g, 'legacy')))
-    || (emitLandscape && lBadgeMode === 7 && lGroups.some(g => gbHasSlot(g, 'legacy')));
+  if (_pGB && _gbHas(pGroups, 'cert') && pShared['cfg-badge-cert-style'] === 'frosted') params.set('badge_cert_style', 'frosted');
+  if (_lGB && _gbHas(lGroups, 'cert')) params.set('landscape_badge_cert_style', _frosted(lShared, 'cfg-badge-cert-style', 'solid'));
+  if (_pGB && badgeUsesQuality(7, pGroups) && pShared['cfg-badge-quality-style'] === 'frosted') params.set('badge_quality_style', 'frosted');
+  if (_lGB && badgeUsesQuality(7, lGroups)) params.set('landscape_badge_quality_style', _frosted(lShared, 'cfg-badge-quality-style', 'solid'));
+  // The Legacy badge's style (landscape draws no legacy slot).
+  const _legacyShown = (_pGB && _gbHas(pGroups, 'legacy')) || (_lGB && _gbHas(lGroups, 'legacy'));
   const _legacyStyle = vEl('cfg-badge-legacy-style');
   if (_legacyShown && _legacyStyle !== 'notch') params.set('badge_legacy_style', _legacyStyle);
   if (_legacyShown && _legacyStyle === 'combined' && c('tog-badge-stacked')) params.set('combined_badge_stacked', 'true');
-  // And the network and studio logos' size.
-  const _gbLogoShown = (emitAll && badgeMode === 7 && pGroups.some(g => gbHasSlot(g, 'network') || gbHasSlot(g, 'studio')))
-    || (emitLandscape && lBadgeMode === 7 && lGroups.some(g => gbHasSlot(g, 'network') || gbHasSlot(g, 'studio')));
-  const _gbls = n('cfg-badge-logo-scale');
-  if (_gbLogoShown && Math.abs(_gbls - 1) > 1e-6) params.set('badge_logo_scale', _gbls.toFixed(2));
-  if (_gbLogoShown && vEl('cfg-badge-logo-style') === 'frosted') params.set('badge_logo_style', 'frosted');
+  // And the network and studio logos' size and look.
+  if (_pGB && _gbHas(pGroups, 'network', 'studio')) {
+    const _gbls = Number(pShared['cfg-badge-logo-scale']);
+    if (Number.isFinite(_gbls) && Math.abs(_gbls - 1) > 1e-6) params.set('badge_logo_scale', _gbls.toFixed(2));
+    if (pShared['cfg-badge-logo-style'] === 'frosted') params.set('badge_logo_style', 'frosted');
+  }
+  if (_lGB && _gbHas(lGroups, 'network', 'studio')) {
+    const _gbls = Number(lShared['cfg-badge-logo-scale']);
+    params.set('landscape_badge_logo_scale', (Number.isFinite(_gbls) ? _gbls : 1).toFixed(2));
+    params.set('landscape_badge_logo_style', _frosted(lShared, 'cfg-badge-logo-style', 'solid'));
+  }
   if (_qualityShown && c('tog-wait-quality')) {
     params.set('wait_for_quality', 'true');
     if (c('tog-greyscale-noquality')) params.set('greyscale_no_quality', 'true');
@@ -8070,7 +8144,7 @@ function buildShareUrl() {
   p.set('share', '1');
   // The plain list, not the "default,..." diff: the recipient's default order
   // may not be this server's.
-  if (p.has('sash_priority')) p.set('sash_priority', getSashPriorityParam({ compact: false }));
+  fullSashPriorities(p);
   return shortenUrl(`${origin}/poster?${p.toString()}`);
 }
 
@@ -9039,6 +9113,10 @@ function updateTrendingStyleFields() {
   }
   document.getElementById('sash-trending-align-field').style.display =
     style === 'number' && vEl('cfg-trending-side') === 'center' ? '' : 'none';
+  // On landscape the text colour is the ribbon's alone; a frosted one picks
+  // its own ink.  Portrait's follows the sash mode (updateSashBadgeFields).
+  if (landscape) document.getElementById('sash-text-color-field').style.display =
+    style === 'ribbon' && vEl('cfg-trending-ribbon-style') !== 'frosted' ? '' : 'none';
   if (style !== 'sash') initCustomMobileSliders();
 }
 
@@ -9413,6 +9491,23 @@ const _SHARED_PARAM = {
   'cfg-bar-frost-sat':          'bar_frost_saturation',
   // Falls back to the plain one: landscape's frosted chips read it before.
   'tog-bar-frost-reference':    'frost_reference',
+  // One setting for both shapes until they were kept per shape, so these fall
+  // back to the plain one too, and a shape that has never had a value of its
+  // own takes the other's (_SHARED_INHERIT).  cfg-sash-priority holds the
+  // sash list's order (sashOrder / sashDisabled), which is no control.
+  'cfg-badge-quality-style':    'badge_quality_style',
+  'cfg-badge-cert-style':       'badge_cert_style',
+  'cfg-badge-logo-style':       'badge_logo_style',
+  'cfg-badge-cinema-style':     'badge_cinema_style',
+  'cfg-badge-logo-scale':       'badge_logo_scale',
+  'cfg-rating-badge-max':       'rating_badge_max',
+  'cfg-rating-badge-scale':     'rating_badge_scale',
+  'cfg-rating-badge-style':     'rating_badge_style',
+  'cfg-meta-order':             'meta_order',
+  'cfg-sash-priority':          'sash_priority',
+  // The trending ribbon's text colour on landscape.  Never falls back: the
+  // control was portrait-only, so the plain name is the portrait sash's.
+  'cfg-sash-text-color':        'sash_text_color',
 };
 const _SHARED_NO_FALLBACK = new Set(['badge_display_mode',
   'top_gradient', 'top_gradient_opacity', 'top_gradient_height',
@@ -9422,7 +9517,10 @@ const _SHARED_NO_FALLBACK = new Set(['badge_display_mode',
   'trending_frost_opacity', 'trending_frost_saturation', 'trending_label', 'trending_corner',
   'score_color_mode', 'score_custom_palette', 'score_glow_threshold', 'score_glow_blur', 'score_glow_alpha',
   'score_glow_color', 'bar_style', 'bar_accent', 'bar_append', 'bar_score_out_of_10', 'bar_height_ratio',
-  'bar_font_size_ratio', 'bar_frost_opacity', 'bar_frost_saturation']);
+  'bar_font_size_ratio', 'bar_frost_opacity', 'bar_frost_saturation', 'sash_text_color']);
+const _SHARED_INHERIT = new Set(['cfg-badge-quality-style', 'cfg-badge-cert-style', 'cfg-badge-logo-style',
+  'cfg-badge-cinema-style', 'cfg-badge-logo-scale', 'cfg-rating-badge-max', 'cfg-rating-badge-scale',
+  'cfg-rating-badge-style', 'cfg-meta-order', 'cfg-sash-priority']);
 const _SHAPE_SHARED = Object.keys(_SHARED_PARAM);
 const _SHARED_ID = Object.fromEntries(Object.entries(_SHARED_PARAM).map(([id, param]) => [param, id]));
 const _LANDSCAPE_SHARED_DEFAULTS = {
@@ -9443,12 +9541,13 @@ const _LANDSCAPE_SHARED_DEFAULTS = {
   'cfg-glow-alpha': '40', 'cfg-glow-color-mode': 'white', 'cfg-glow-color': '',
   'cfg-bar-style': 'frosted', 'cfg-bar-accent': 'silver', 'cfg-bar4-append': 'rating_year', 'tog-bar-score-10': false,
   'cfg-bar-height': '0.080', 'cfg-bar-font': '0.55', 'cfg-bar-frost': '0.85', 'cfg-bar-frost-sat': '1.20',
-  'tog-bar-frost-reference': false,
+  'tog-bar-frost-reference': false, 'cfg-sash-text-color': '',
 };
 const SHAPE_STASH_KEY = 'postersplus_shape_stash';
 let _shapeStash = { portrait: null, landscape: null };   // null = that shape's defaults
 
 function _readShared() {
+  _syncSashPriorityInput();
   const out = {};
   for (const id of _SHAPE_SHARED) {
     const el = document.getElementById(id);
@@ -9477,10 +9576,39 @@ function _writeShared(values) {
   }
   // The notch's Reference Colour is the same setting as the Bar's.
   _setEl('tog-sash-frost-reference', String(c('tog-bar-frost-reference')));
+  if ('cfg-sash-priority' in values) _applySashPriorityInput();
+  _syncSashColorPicker();
   updateGlowColorField();
 }
+// cfg-sash-priority follows the sash list on screen, read before the shape's
+// values are, and puts a shape's list back on screen when one is written.
+function _syncSashPriorityInput() {
+  const el = document.getElementById('cfg-sash-priority');
+  if (el) el.value = getSashPriorityParam({ compact: false });
+}
+function _applySashPriorityInput() {
+  const parsed = parseSashPriority(vEl('cfg-sash-priority'));
+  if (!parsed) return;
+  sashOrder = parsed.order; sashDisabled = parsed.disabled;
+  saveSashOrder();
+  buildSashList();
+}
+// Both shapes' sash priorities in *p* as the plain list, not the "default,..."
+// diff, each its own shape's: the list on screen is only one of them.
+function fullSashPriorities(p) {
+  for (const key of ['sash_priority', 'landscape_sash_priority']) {
+    const parsed = p.has(key) ? parseSashPriority(p.get(key)) : null;
+    if (parsed) p.set(key, getSashPriorityParam({ compact: false, ...parsed }));
+  }
+}
+// A shape's cfg-sash-priority value as a URL spells it.
+function sashPriorityParamFor(value) {
+  const parsed = parseSashPriority(value);
+  return parsed ? getSashPriorityParam(parsed) : String(value || '');
+}
 function _sharedDefaults(shape) {
-  if (shape === 'landscape') return _LANDSCAPE_SHARED_DEFAULTS;
+  // A setting landscape has no default of its own for starts as the control's.
+  if (shape === 'landscape') return { ..._sharedDefaults('portrait'), ..._LANDSCAPE_SHARED_DEFAULTS };
   const out = {};
   for (const id of _SHAPE_SHARED) {
     const el = document.getElementById(id);
@@ -9515,7 +9643,7 @@ function _sharedFromParams(p, shape) {
       out[id] = !['0', 'false', 'no'].includes(raw.trim().toLowerCase());
     } else if (el.tagName === 'SELECT') {
       out[id] = [...el.options].some(o => o.value === raw) ? raw : defaults[id];
-    } else if (el.type === 'hidden') {
+    } else if (el.type === 'hidden' || el.type === 'text') {
       out[id] = raw;
     } else {
       out[id] = Number.isFinite(Number(raw)) ? raw : defaults[id];
@@ -9533,8 +9661,17 @@ function _sharedFor(shape) {
 // A shape's stash over its defaults: a stash saved before a setting was kept
 // per shape has no value for it, and a missing value must read as the
 // default, not as nothing (parseInt(undefined) is a Hidden badge mode).
+//
+// A setting in _SHARED_INHERIT the shape has no value for was one setting for
+// both shapes when the stash was saved (or the shape was never shown), so it
+// is the other shape's, as the server's fallback to the plain name reads it.
 function _stashFor(shape) {
-  return { ..._sharedDefaults(shape), ...(_shapeStash[shape] || {}) };
+  const stash = _shapeStash[shape] || {};
+  const out = { ..._sharedDefaults(shape), ...stash };
+  const other = shape === 'landscape' ? 'portrait' : 'landscape';
+  const otherValues = c('tog-landscape') === (other === 'landscape') ? _readShared() : (_shapeStash[other] || {});
+  for (const id of _SHARED_INHERIT) if (!(id in stash) && id in otherValues) out[id] = otherValues[id];
+  return out;
 }
 function _saveShapeStash() {
   try { localStorage.setItem(SHAPE_STASH_KEY, JSON.stringify(_shapeStash)); } catch (e) {}
@@ -10380,7 +10517,7 @@ function saveUserPreset() {
   const p = new URLSearchParams(_presetParams(full.slice(full.indexOf('?') + 1)));
   // The plain list, as saveSettings keeps it: a "default,..." diff means
   // whatever the server's default is on the day it's loaded.
-  if (p.has('sash_priority')) p.set('sash_priority', getSashPriorityParam({ compact: false }));
+  fullSashPriorities(p);
   const list = _readUserPresets();
   if (_savedUserPresetCount() >= USER_PRESETS_MAX) { setStatus(`You can keep ${USER_PRESETS_MAX} presets.`, 'err'); return; }
   const entry = {
@@ -10493,7 +10630,7 @@ const _BOTH_SHAPES_CONTROLS = new Set([
   'cfg-language', 'cfg-language-secondary', 'cfg-logo-priority',
   'tog-fallback-imdb', 'cfg-imdb-rating-source', 'cfg-tmdb-rating-source',
   'tog-release-cinema-only', 'tog-release-dates', 'tog-airing-dates', 'tog-anime-weights',
-  'tog-hide-unreleased-rating', 'cfg-meta-order', 'cfg-label-font', 'cfg-original-labels',
+  'tog-hide-unreleased-rating', 'cfg-label-font', 'cfg-original-labels',
   'cfg-primary-client', 'cfg-resolution', 'cfg-domain', 'cfg-access-key', 'cfg-tmdb-key', 'cfg-mdblist-key',
   'cfg-search-query', 'cfg-trending-list',
 ]);
@@ -11037,46 +11174,10 @@ function importUrl(urlStr, { silent = false, settingsOnly = false, preserveClien
   // saved before they were stored as the plain list still hold one, and the
   // startup restore reaches here before /server-caps has answered — the order
   // loadSashOrder() already put back stands rather than an unexpandable diff.
-  const _sashDiffPending = !serverCaps.sash_priority_default
-    && (p.get('sash_priority') || '').split(',')[0].trim().startsWith('default');
-  if (p.has('sash_priority') && !_sashDiffPending) {
-    let rawTokens = p.get('sash_priority').split(',').map(s => s.trim()).filter(Boolean);
-    const known  = new Set(SASH_SLOTS.map(s => s.id));
-    // The diff form — "default,-cult,festival@0" — has to expand back to a
-    // plain ordered list before the legacy handling below can read it. Without
-    // this every token would fail the `known` test and import would land on
-    // "every sash disabled", quietly discarding the order it was handed.
-    // Each seed counts positions in the default order of its day (an older
-    // one's comes from sash_priority_diff_bases), as the server reads it.
-    const _diffBases = serverCaps.sash_priority_diff_bases || {};
-    if (rawTokens[0] === serverCaps.sash_priority_diff_seed) {
-      rawTokens = expandSashDiff(rawTokens.slice(1));
-    } else if (Array.isArray(_diffBases[rawTokens[0]])) {
-      rawTokens = expandSashDiff(rawTokens.slice(1), _diffBases[rawTokens[0]]);
-    }
-    // Back-compat: the legacy combined "structural" token expands, in place, to
-    // its granular slots in the same priority order it used internally
-    // (short_film > mini_series > binge_ready) so importing an old URL keeps the
-    // same behaviour instead of silently dropping the sash.
-    const LEGACY_EXPANSIONS = { structural: ['short_film', 'mini_series', 'binge_ready'] };
-    const tokens = [];
-    for (const t of rawTokens) {
-      const neg  = t.startsWith('-');
-      const bare = neg ? t.slice(1) : t;
-      if (LEGACY_EXPANSIONS[bare]) {
-        LEGACY_EXPANSIONS[bare].forEach(g => tokens.push((neg ? '-' : '') + g));
-      } else {
-        tokens.push(t);
-      }
-    }
-    // Only the slots explicitly listed (leading '-' tokens are exclusions) are
-    // enabled. Anything absent from the imported config — including sashes added
-    // in a newer version — is treated as disabled rather than force-enabled, so
-    // it lands in the disabled list ready for the user to opt into.
-    const active   = tokens.filter(t => !t.startsWith('-') && known.has(t));
-    const disabled = SASH_SLOTS.map(s => s.id).filter(id => !active.includes(id));
-    sashDisabled = new Set(disabled);
-    sashOrder    = active;
+  const _sashParsed = p.has('sash_priority') ? parseSashPriority(p.get('sash_priority')) : null;
+  if (_sashParsed) {
+    sashDisabled = _sashParsed.disabled;
+    sashOrder    = _sashParsed.order;
     saveSashOrder();
     buildSashList();
   }
@@ -11272,7 +11373,7 @@ function saveSettings() {
     // Saved as the plain list, never the "default,..." diff: the startup
     // restore runs before /server-caps has said what "default" is, so a saved
     // diff can't be expanded and read back as every sash disabled.
-    if (p.has('sash_priority')) p.set('sash_priority', getSashPriorityParam({ compact: false }));
+    fullSashPriorities(p);
     localStorage.setItem(SETTINGS_KEY, p.toString());
   } catch (e) { /* storage disabled / quota — non-fatal */ }
 }

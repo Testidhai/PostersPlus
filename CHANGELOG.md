@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### More landscape settings of its own
+
+- The graphic badges' looks (Quality, Certificate and Logo style, Cinema
+  style, Logo size), the rating badges' Show At Most, Badge Scores and
+  Badge Style, the label order and the sash priority list are now kept
+  per shape, like the vignette and Hide switches: set them in landscape
+  view and the portrait keeps its own. Until you change one in landscape
+  it follows the portrait, so existing URLs render as before. New URL
+  parameters `landscape_badge_quality_style` (`_bqs`),
+  `landscape_badge_cert_style` (`_bcts`), `landscape_badge_logo_style`
+  (`_blgs`), `landscape_badge_cinema_style` (`_bcs`),
+  `landscape_badge_logo_scale` (`_bls`), `landscape_rating_badge_max`
+  (`_rbm`), `landscape_rating_badge_scale` (`_rbs`),
+  `landscape_rating_badge_style` (`_rbst`), `landscape_meta_order` (`_mo`)
+  and `landscape_sash_priority` (`_sp`).
+- Fixed: the landscape trending ribbon took its text colour from the
+  portrait sash's Text Colour, which landscape view didn't show. The field
+  now shows in landscape view for a ribbon and sets the ribbon's colour
+  alone (`landscape_sash_text_color`, `_stc`).
+
 ### Send to AIOMetadata
 
 - **Copy config → Send to AIOMetadata…** (right-click or long press) sets

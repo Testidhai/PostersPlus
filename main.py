@@ -2431,6 +2431,20 @@ _LANDSCAPE_SPLIT_PARAMS: tuple[str, ...] = (
     "frost_reference",
     # Landscape's own graphic badge groups, drawn only with landscape_badge_display_mode=7.
     *graphic_badges.GROUP_PARAMS,
+    # The graphic badges' looks, the rating badges' cap, scale and style, the
+    # info line's order and the sash priority were one setting for both shapes
+    # until they were kept per shape.  The plain name is the fallback, as a
+    # landscape URL written before carries the landscape's values under it.
+    "badge_quality_style",
+    "badge_cert_style",
+    "badge_logo_style",
+    "badge_cinema_style",
+    "badge_logo_scale",
+    "rating_badge_max",
+    "rating_badge_scale",
+    "rating_badge_style",
+    "meta_order",
+    "sash_priority",
 )
 
 
@@ -2477,6 +2491,10 @@ _LANDSCAPE_OWN_PARAMS: tuple[str, ...] = (
     "bar_font_size_ratio",
     "bar_frost_opacity",
     "bar_frost_saturation",
+    # The trending ribbon's text colour, the one thing sash_text_color colours
+    # on landscape.  Its control was portrait-only, so the plain name in a
+    # landscape URL is always the portrait sash's colour.
+    "sash_text_color",
 )
 
 

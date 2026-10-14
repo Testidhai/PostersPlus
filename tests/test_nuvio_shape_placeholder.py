@@ -126,6 +126,39 @@ class LandscapeSplitParamTests(unittest.TestCase):
                                     "landscape_vignette_color_saturation": "99"})
         self.assertEqual(cfg.vignette_color_saturation, 3.0)
 
+    def test_badge_looks_label_order_and_sash_priority_are_kept_per_shape(self):
+        params = {
+            "badge_quality_style": "frosted", "landscape_badge_quality_style": "solid",
+            "badge_cinema_style": "frosted", "landscape_badge_cinema_style": "auto",
+            "badge_logo_scale": "1.5", "landscape_badge_logo_scale": "0.8",
+            "rating_badge_style": "mono", "landscape_rating_badge_style": "color",
+            "meta_order": "year,genre,rating", "landscape_meta_order": "",
+            "sash_priority": "trending,cult", "landscape_sash_priority": "cult,trending",
+        }
+        portrait = build_request_config({**params, "shape": "poster"})
+        landscape = build_request_config({**params, "shape": "landscape"})
+        self.assertEqual((portrait.badge_quality_style, landscape.badge_quality_style), ("frosted", "solid"))
+        self.assertEqual((portrait.badge_cinema_style, landscape.badge_cinema_style), ("frosted", "auto"))
+        self.assertEqual((portrait.badge_logo_scale, landscape.badge_logo_scale), (1.5, 0.8))
+        self.assertEqual((portrait.rating_badge_style, landscape.rating_badge_style), ("mono", "color"))
+        self.assertEqual((portrait.meta_order, landscape.meta_order), ("year,genre,rating", ""))
+        self.assertEqual(portrait.sash_priority[:2], ["trending", "cult"])
+        self.assertEqual(landscape.sash_priority[:2], ["cult", "trending"])
+        # A landscape URL from before the split keeps them under the plain names.
+        old = build_request_config({"shape": "landscape", "badge_quality_style": "frosted",
+                                    "meta_order": "year,genre,rating"})
+        self.assertEqual((old.badge_quality_style, old.meta_order), ("frosted", "year,genre,rating"))
+
+    def test_landscape_never_takes_the_portrait_sash_text_colour(self):
+        # The control was portrait-only, so the plain name is the portrait
+        # sash's colour; landscape's ribbon reads its own alone.
+        cfg = build_request_config({"shape": "landscape", "sash_text_color": "FF0000"})
+        self.assertIsNone(cfg.sash_text_color)
+        cfg = build_request_config({"shape": "landscape", "sash_text_color": "FF0000",
+                                    "landscape_sash_text_color": "00FF00"})
+        self.assertEqual(cfg.sash_text_color, (0, 255, 0))
+        self.assertEqual(build_request_config({"sash_text_color": "FF0000"}).sash_text_color, (255, 0, 0))
+
     def test_every_split_param_is_a_setting_both_layouts_read(self):
         defaults = main._render_param_defaults()
         for name in main._LANDSCAPE_SPLIT_PARAMS:

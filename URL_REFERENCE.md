@@ -91,12 +91,12 @@ Optional parameters control the landscape-specific choices:
 - `landscape_greyscale=true` greyscales the art while a film is still in cinemas or not out yet, as `cinema_greyscale` does on a portrait, but without needing the release-status sash. The bands go black, the colour they keep on a greyscaled portrait. `cinema_greyscale_skip_if_available` applies, and so does `greyscale_no_quality` on a landscape that shows quality.
 - `landscape_badge_style=glass|black|silver|gold` (default `glass`, the frosted pill) draws the info badge in one of the portrait notch's dark styles: a near-black pill, or a dark one with a silver or gold rim. `landscape_badge_text_color=RRGGBB` sets the dark pills' label colour.
 - `landscape_badge_shape=pill|chip` (default `pill`) sets the info badge's outline: `chip` is the portrait side chip's rounded rectangle in place of the pill's round ends. `landscape_badge_case=auto|upper|mixed` (default `auto`) sets its label in capitals or in the label's own case (`Oscar Winner`); `auto` gives the pill capitals and the chip mixed case, as the portrait chip has it.
-- `landscape_trending_style=sash|number|ribbon` (default `sash`, the `#N Today` badge) draws a trending rank as the portrait's numeral or ribbon, and the badge moves on to the next label. The mark has its own settings, read from these names alone and never from the portrait's: `landscape_trending_side=left|right`, `landscape_trending_scale`, `landscape_trending_sash=keep|hide|opposite` (`keep` moves the badge clear of the mark, `opposite` moves a top-corner badge to the other top corner), and for the ribbon `landscape_trending_ribbon_style`, `landscape_trending_frost_opacity`, `landscape_trending_frost_saturation`, `landscape_trending_label` and `landscape_trending_corner`. The numeral stands in the badge's column, on its top line; the ribbon hangs from the top edge. A top-row logo or info line on the mark's side hangs below it.
+- `landscape_trending_style=sash|number|ribbon` (default `sash`, the `#N Today` badge) draws a trending rank as the portrait's numeral or ribbon, and the badge moves on to the next label. The mark has its own settings, read from these names alone and never from the portrait's: `landscape_trending_side=left|right`, `landscape_trending_scale`, `landscape_trending_sash=keep|hide|opposite` (`keep` moves the badge clear of the mark, `opposite` moves a top-corner badge to the other top corner), and for the ribbon `landscape_trending_ribbon_style`, `landscape_trending_frost_opacity`, `landscape_trending_frost_saturation`, `landscape_trending_label`, `landscape_trending_corner` and `landscape_sash_text_color=RRGGBB` (the ribbon's text, which the portrait's `sash_text_color` never colours here). The numeral stands in the badge's column, on its top line; the ribbon hangs from the top edge. A top-row logo or info line on the mark's side hangs below it.
 - `landscape_winner_star=true` puts a ★ in front of an award winner's badge label, as `sash_winner_star` does on a portrait.
 - `landscape_logo_scale=0.5–1.5` (default `1.0`) scales the box the logo, or the title standing in for one, is fitted to.
-- `landscape_rating_badges=true` shows the `rating_badges` sites' own scores, each behind its logo, in place of the score on the info line, with `rating_badge_max`, `rating_badge_scale`, `rating_badge_style` and the per-kind sites as on a portrait (`landscape_score_out_of_10` sets the P+ scale's form). Short of room the genre drops first, then the year, then badges from the end. `landscape_rating_badge_list=` gives landscape its own sites, spelled as `rating_badges` is (kinds included), in place of the portrait's: a `{shape}` URL can then show different sites on each layout. Absent, landscape uses `rating_badges`; present but empty, it shows none.
+- `landscape_rating_badges=true` shows the `rating_badges` sites' own scores, each behind its logo, in place of the score on the info line, with `landscape_rating_badge_max`, `landscape_rating_badge_scale`, `landscape_rating_badge_style` (each falling back to the portrait's plain name) and the per-kind sites as on a portrait (`landscape_score_out_of_10` sets the P+ scale's form). Short of room the genre drops first, then the year, then badges from the end. `landscape_rating_badge_list=` gives landscape its own sites, spelled as `rating_badges` is (kinds included), in place of the portrait's: a `{shape}` URL can then show different sites on each layout. Absent, landscape uses `rating_badges`; present but empty, it shows none.
 - `landscape_color_link=off|badge_follows_vignette|vignette_follows_badge` links the colour of the info badge and a tinted band: the badge takes the band's colour, or the band takes the whole-frame colour the badge uses. Only the hue is shared — the band still darkens it, the badge still lifts it for legibility.
-- `landscape_<name>` sets a landscape-only value for a setting both shapes read: `vignette_poster_color_bottom`, `vignette_color_ramp`, `vignette_color_local`, `vignette_color_style`, `vignette_color_saturation`, `vignette_color_lightness`, `vignette_color_blur`, `hide_genre`, `hide_year`, `hide_rating`, `textless` and `sash_mode`. A landscape render reads `landscape_<name>`, then `<name>`, then its own default, and a portrait render never reads it — which is what lets one `shape={shape}` URL give each layout different values.
+- `landscape_<name>` sets a landscape-only value for a setting both shapes read: `vignette_poster_color_bottom`, `vignette_color_ramp`, `vignette_color_local`, `vignette_color_style`, `vignette_color_saturation`, `vignette_color_lightness`, `vignette_color_blur`, `hide_genre`, `hide_year`, `hide_rating`, `textless`, `sash_mode`, `sash_priority`, `meta_order`, `rating_badge_max`, `rating_badge_scale`, `rating_badge_style`, and the graphic badges' `badge_quality_style`, `badge_cert_style`, `badge_logo_style`, `badge_cinema_style` and `badge_logo_scale`. A landscape render reads `landscape_<name>`, then `<name>`, then its own default, and a portrait render never reads it — which is what lets one `shape={shape}` URL give each layout different values.
 
 The configurator previews both shapes: the landscape button in the preview header switches the live preview to the 16:9 render, shows the landscape choices in the tabs the portrait ones live in: Logo (art and its source, textless, logo position and size), Rating (the info line's size, score out of 10, star, rating badges, and the Hide switches), Sash → Badge (position, size, colour link, style, winner star, greyscale) and Extras (Graphic Badges), and makes **Copy config** copy the landscape URL, so a client with a landscape slot can be given the same settings as the portrait one. (Only Discover+ needs it — the shared URL carries `shape={shape}` and is already both, so there is no separate landscape copy to take.) The landscape URL carries only the settings the landscape renderer reads (identity, language, sash priority and release-status filters, weights, Hide Genre, Hide Year, Hide Rating, Textless, and the bottom vignette colour with its sliders). Portrait-only controls are hidden while it is showing, and the Extras tab offers just Graphic Badges (on or off), with its own groups for landscape. Your portrait settings are kept — switching back restores them.
 
@@ -180,12 +180,13 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `imdb_rating_source` | `irs` |
 | `label_font` | `lf` |
 | `label_language` | `lla` |
-| `landscape_anime_provider_art` | `_apa` |
 | `landscape_art` | `_art` |
 | `landscape_art_source_anime` | `_asa` |
 | `landscape_art_source_movie` | `_asm` |
 | `landscape_art_source_tv` | `_ast` |
 | `landscape_badge_case` | `_bc` |
+| `landscape_badge_cert_style` | `_bcts` |
+| `landscape_badge_cinema_style` | `_bcs` |
 | `landscape_badge_display_mode` | `_bdm` |
 | `landscape_badge_font` | `_bf` |
 | `landscape_badge_glass_opacity` | `_bgop` |
@@ -194,8 +195,11 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `landscape_badge_group3` | `_bg3` |
 | `landscape_badge_group4` | `_bg4` |
 | `landscape_badge_height` | `_bh` |
+| `landscape_badge_logo_scale` | `_bls` |
+| `landscape_badge_logo_style` | `_blgs` |
 | `landscape_badge_opacity` | `_bo` |
 | `landscape_badge_pos` | `_bp` |
+| `landscape_badge_quality_style` | `_bqs` |
 | `landscape_badge_saturation` | `_bsa` |
 | `landscape_badge_scale` | `_bs` |
 | `landscape_badge_shape` | `_bsh` |
@@ -227,13 +231,18 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `landscape_info_scale` | `_is` |
 | `landscape_logo_pos` | `_lp` |
 | `landscape_logo_scale` | `_ls` |
+| `landscape_meta_order` | `_mo` |
 | `landscape_poster_crop` | `_pc` |
-| `landscape_poster_pick` | `_pp` |
+| `landscape_rating_badge_max` | `_rbm` |
+| `landscape_rating_badge_scale` | `_rbs` |
+| `landscape_rating_badge_style` | `_rbst` |
 | `landscape_rating_badges` | `_rb` |
 | `landscape_rating_badge_list` | `_rbl` |
 | `landscape_rating_mode` | `_rmo` |
 | `landscape_rating_separator` | `_rs` |
 | `landscape_sash_mode` | `_sm` |
+| `landscape_sash_priority` | `_sp` |
+| `landscape_sash_text_color` | `_stc` |
 | `landscape_score_color_mode` | `_scm` |
 | `landscape_score_custom_palette` | `_scp` |
 | `landscape_score_glow_alpha` | `_sga` |
@@ -364,6 +373,8 @@ Every setting has a short name, and the configurator writes those: `vpcb=e0b84f`
 | `vignette_poster_color_bottom` | `vpcb` |
 | `vignette_poster_color_top` | `vpct` |
 | `wait_for_quality` | `wfq` |
+| `landscape_anime_provider_art` | `_apa` |
+| `landscape_poster_pick` | `_pp` |
 <!-- param-aliases:end -->
 
 </details>
