@@ -110,9 +110,10 @@ async def refresh_mdblist_quota_from_account(client: httpx.AsyncClient, mdblist_
     no reset header; MDBList's window is the UTC day (x-ratelimit-reset is
     always a UTC midnight).
     """
+    started = time.time()
     try:
         resp = await client.get(
-            "https://api.mdblist.com/user", params={"apikey": mdblist_key}, timeout=5.0,
+            "https://api.mdblist.com/user", params={"apikey": mdblist_key}, timeout=3.0,
         )
         if resp.status_code != 200:
             return None
@@ -123,7 +124,15 @@ async def refresh_mdblist_quota_from_account(client: httpx.AsyncClient, mdblist_
         logger.debug(f"MDBList account quota read failed: {type(exc).__name__}: {exc}")
         return None
     now = time.time()
-    quota = MDBListQuota(limit, max(0, limit - used), float((int(now) // 86400 + 1) * 86400), now)
+    current = MDBLIST_QUOTA.get(mdblist_key)
+    if current is not None and current.observed_at >= started:
+        # A rating response recorded while this read was in flight is newer.
+        return current
+    if current is not None and current.reset_at is not None and current.is_current(now):
+        reset_at = current.reset_at  # MDBList's own header beats the computed midnight
+    else:
+        reset_at = float((int(now) // 86400 + 1) * 86400)
+    quota = MDBListQuota(limit, max(0, limit - used), reset_at, now)
     MDBLIST_QUOTA[mdblist_key] = quota
     return quota
 
