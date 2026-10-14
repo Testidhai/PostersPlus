@@ -98,6 +98,36 @@ def _record_mdblist_quota(mdblist_key: str, headers) -> MDBListQuota | None:
     return quota
 
 
+async def refresh_mdblist_quota_from_account(client: httpx.AsyncClient, mdblist_key: str) -> MDBListQuota | None:
+    """Refresh *mdblist_key*'s snapshot from MDBList's /user endpoint.
+
+    The snapshots above only exist for keys this process has spent a rating
+    request on, so a freshly restarted server shows nothing, a standby key
+    that has never been rotated to stays blank, and with several workers each
+    one sees only its own calls. /user reports the account's daily limit and
+    the requests counted against it today without counting itself, so the
+    dashboard and the warmer can read the real figure for every key. It has
+    no reset header; MDBList's window is the UTC day (x-ratelimit-reset is
+    always a UTC midnight).
+    """
+    try:
+        resp = await client.get(
+            "https://api.mdblist.com/user", params={"apikey": mdblist_key}, timeout=5.0,
+        )
+        if resp.status_code != 200:
+            return None
+        body = resp.json()
+        limit = int(body["api_requests"])
+        used = int(body["api_requests_count"])
+    except Exception as exc:
+        logger.debug(f"MDBList account quota read failed: {type(exc).__name__}: {exc}")
+        return None
+    now = time.time()
+    quota = MDBListQuota(limit, max(0, limit - used), float((int(now) // 86400 + 1) * 86400), now)
+    MDBLIST_QUOTA[mdblist_key] = quota
+    return quota
+
+
 def mdblist_quota_remaining(mdblist_key: str, now: float | None = None) -> int | None:
     """Remaining daily requests for *mdblist_key*, or None when unknown / stale."""
     quota = MDBLIST_QUOTA.get(mdblist_key)

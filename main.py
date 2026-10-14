@@ -964,6 +964,7 @@ from ratings import (
     mdblist_release_dates,
     mdblist_tv_horror,
     parse_custom_score_palette,
+    refresh_mdblist_quota_from_account,
     score_color_for_mode,
     _draw_solid_pip,
     _score_color,
@@ -7206,6 +7207,9 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Custom font upgrade skipped: {exc}")
     # Held in the lifespan frame, which lives as long as the app.
     _font_upgrade_task = asyncio.create_task(_upgrade_custom_fonts())  # noqa: F841
+    # Quota snapshots are per process and start empty; read the real usage so
+    # the warmer's reserve and the dashboard are right straight after a restart.
+    _mdblist_quota_task = asyncio.create_task(_refresh_server_mdblist_quotas(force=True))  # noqa: F841
     # Count the genre fallback backgrounds without decoding them.  These are only
     # used when a title has no usable art at all, so warming the whole set into
     # memory cost ~172 MB resident for a path most requests never touch; they now
@@ -8626,8 +8630,32 @@ async def _cache_stats_memo() -> dict:
     return _cache_stats_cached[1]
 
 
+# Loop time each server key's quota was last read from MDBList's /user. The
+# overview polls every 15 s; a minute keeps the figure close to live without a
+# call per poll (the read is free, but still a request on the IP's burst limit).
+_MDBLIST_ACCOUNT_REFRESH_SECS = 60.0
+_mdblist_account_read_at: dict[str, float] = {}
+
+
+async def _refresh_server_mdblist_quotas(force: bool = False) -> None:
+    """Read every server key's daily usage from MDBList so it is known for keys
+    this worker hasn't used since it started (see refresh_mdblist_quota_from_account)."""
+    if _HTTP_CLIENT is None:
+        return
+    now = asyncio.get_running_loop().time()
+    if _mdblist_ip_pause_remaining(now) > 0:
+        return
+    due = [k for k in _cfg.SERVER_MDBLIST_KEYS
+           if force or now - _mdblist_account_read_at.get(k, float("-inf")) >= _MDBLIST_ACCOUNT_REFRESH_SECS]
+    for k in due:
+        _mdblist_account_read_at[k] = now
+    if due:
+        await asyncio.gather(*(refresh_mdblist_quota_from_account(_HTTP_CLIENT, k) for k in due))
+
+
 async def _build_stats() -> dict:
     """The /stats payload; also the admin dashboard's overview."""
+    await _refresh_server_mdblist_quotas()
     now = asyncio.get_running_loop().time()
     keys = _cfg.SERVER_MDBLIST_KEYS
     mdblist_keys = []
