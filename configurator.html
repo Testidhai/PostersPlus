@@ -3243,7 +3243,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
             <div class="cfg-sep" id="rating-badges-fields" style="display:none;">
               <span class="group-title">Rating Badges</span>
               <div class="toggle-row landscape-only" id="landscape-rating-badges-own-row">
-                <span class="toggle-label" data-tip="Choose landscape's sites apart from the portrait's, so one URL can show, say, three badges on the poster and one on the wide art. Off, landscape shows the portrait's sites. Show At Most, Badge Scores and Badge Style stay shared.">Own Sites</span>
+                <span class="toggle-label" data-tip="Choose landscape's sites apart from the portrait's, so one URL can show, say, three badges on the poster and one on the wide art. Off, landscape shows the portrait's sites. Show At Most, Badge Scores and Badge Style are kept per shape either way.">Own Sites</span>
                 <label class="toggle-switch">
                   <input type="checkbox" id="tog-landscape-rating-badges-own" onchange="toggleLandscapeRatingBadgesOwn()">
                   <div class="toggle-track"><div class="toggle-thumb"></div></div>
@@ -8887,6 +8887,9 @@ function resetScopeToImport(roots, name) {
         _setEl(id, typeof v === 'boolean' ? String(v) : v);
       }
     }
+    // The import put the portrait's sash list on screen; landscape's is the
+    // one just written to cfg-sash-priority.
+    if (inSet.has('cfg-sash-priority') && 'cfg-sash-priority' in importedLandscape) _applySashPriorityInput();
   }
   for (const [id, values] of Object.entries(weights)) {
     const grid = document.getElementById(id);
