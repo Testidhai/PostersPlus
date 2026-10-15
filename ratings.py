@@ -106,9 +106,9 @@ async def refresh_mdblist_quota_from_account(client: httpx.AsyncClient, mdblist_
     that has never been rotated to stays blank, and with several workers each
     one sees only its own calls. /user reports the account's daily limit and
     the requests counted against it today without counting itself, so the
-    dashboard and the warmer can read the real figure for every key. It has
-    no reset header; MDBList's window is the UTC day (x-ratelimit-reset is
-    always a UTC midnight).
+    dashboard and the warmer can read the real figure for every key. Its body
+    carries rate_limit_reset; without it the window is taken as the UTC day
+    (x-ratelimit-reset is always a UTC midnight).
     """
     started = time.time()
     try:
@@ -120,6 +120,7 @@ async def refresh_mdblist_quota_from_account(client: httpx.AsyncClient, mdblist_
         body = resp.json()
         limit = int(body["api_requests"])
         used = int(body["api_requests_count"])
+        body_reset = body.get("rate_limit_reset")
     except Exception as exc:
         logger.debug(f"MDBList account quota read failed: {type(exc).__name__}: {exc}")
         return None
@@ -128,7 +129,9 @@ async def refresh_mdblist_quota_from_account(client: httpx.AsyncClient, mdblist_
     if current is not None and current.observed_at >= started:
         # A rating response recorded while this read was in flight is newer.
         return current
-    if current is not None and current.reset_at is not None and current.is_current(now):
+    if isinstance(body_reset, (int, float)) and body_reset > now:
+        reset_at = float(body_reset)
+    elif current is not None and current.reset_at is not None and current.is_current(now):
         reset_at = current.reset_at  # MDBList's own header beats the computed midnight
     else:
         reset_at = float((int(now) // 86400 + 1) * 86400)

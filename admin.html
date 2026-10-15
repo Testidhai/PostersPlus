@@ -1118,9 +1118,10 @@ function renderOverview() {
       const pct = rem != null && lim ? rem / lim : null;
       tiles.push({
         label: `MDBList key ${k.index}${k.active ? ' · active' : ''}`,
-        value: rem == null ? '—' : `${fmtNum(rem)}<small>/ ${fmtNum(lim)} today</small>`,
-        sub: k.cooling_down ? `cooling down ${k.cooldown_secs}s` : (k.quota_reset_at ? `resets ${new Date(k.quota_reset_at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'no request yet this window'),
-        cls: k.cooling_down ? 'bad' : (pct != null && pct < 0.15 ? 'warn' : (pct != null ? 'ok' : '')),
+        // Remaining, not used: "0 left" is a spent key, "970 left" is 30 used.
+        value: rem == null ? '—' : `${fmtNum(rem)} left<small>of ${fmtNum(lim)} today</small>`,
+        sub: k.cooling_down ? `cooling down ${k.cooldown_secs}s` : (k.quota_reset_at ? `${rem === 0 ? 'spent · ' : ''}resets ${new Date(k.quota_reset_at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'no request yet this window'),
+        cls: k.cooling_down || rem === 0 ? 'bad' : (pct != null && pct < 0.15 ? 'warn' : (pct != null ? 'ok' : '')),
       });
     }
   } else {
