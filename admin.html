@@ -2240,7 +2240,7 @@ function sbNorm(map) {
   for (const [lang, table] of Object.entries(map || {}))
     for (const [key, text] of Object.entries(table)) {
       const t = String(text).trim().replace(/\s+/g, ' ');
-      if (t && sb.data && t !== sb.data.builtin[lang][key]) out.push(`${lang}/${key}=${t}`);
+      if (t && sb.data && t !== (sb.data.builtin[lang] || {})[key]) out.push(`${lang}/${key}=${t}`);
     }
   return out.sort().join('\n');
 }

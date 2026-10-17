@@ -61,6 +61,21 @@ class OverrideTests(_LabelsFile):
         self.assertEqual(translate_sash("New Season", "zz"), "Fresh Season")
         self.assertEqual(translate_sash("New Season", "fr"), "Nouvelle saison")
 
+    def test_a_regional_override_layers_on_the_base_language(self):
+        self.write({"fr-ca": {"New Season": "Saison neuve"}, "fr": {"Cinema": "En salle"}})
+        self.assertEqual(translate_sash("New Season", "fr-CA"), "Saison neuve")
+        # The rest of French, bundled and overridden, still applies.
+        self.assertEqual(translate_sash("Cinema", "fr-CA"), "En salle")
+        self.assertEqual(translate_sash("Palme d'Or", "fr-CA"), "Palme d'or")
+        self.assertEqual(translate_sash("New Season", "fr"), "Nouvelle saison")
+
+    def test_a_reload_replaces_the_cached_tables(self):
+        self.assertEqual(translate_sash("New Season", "en"), "New Season")
+        self.write({"en": {"New Season": "Fresh"}})
+        self.assertEqual(translate_sash("New Season", "en"), "Fresh")
+        self.write({})
+        self.assertEqual(translate_sash("New Season", "en"), "New Season")
+
     def test_templates_and_composites_read_the_overrides(self):
         self.write({"en": {
             "trendingToday": "Top {rank}",
@@ -72,8 +87,12 @@ class OverrideTests(_LabelsFile):
         self.assertEqual(translate_sash("Oscar Nominee • Emmy Nominee", "en"), "Oscar Nom • Emmy Nominee")
 
     def test_font_coverage_sees_the_overrides(self):
-        self.write({"fr": {"New Season": "Ωmega"}})
+        self.write({"fr": {"New Season": "Ωmega"}, "en": {"Cinema": "Ψ"}})
         self.assertIn("Ω", language_text("fr"))
+        self.assertNotIn("Ψ", language_text("fr"))
+        # A language without a file draws English, overrides included.
+        self.assertEqual(language_text("zz").replace("Ψ", ""), "")
+        self.assertIn("Ψ", language_text("zz"))
 
     def test_a_broken_file_is_ignored(self):
         with open(self.path, "w", encoding="utf-8") as fh:
@@ -95,6 +114,16 @@ class OverrideTests(_LabelsFile):
         i18n._checked_at = 0.0
         self.assertTrue(i18n.refresh_sash_overrides())
         self.assertEqual(translate_sash("New Season", "en"), "New Season")
+
+    def test_the_editor_is_not_shown_stale_entries(self):
+        self.write({"fr": {"New Season": "Neuve", "Gone Label": "x"}, "xx": {"New Season": "y"}})
+        self.assertEqual(i18n.sash_override_state()["overrides"], {"fr": {"New Season": "Neuve"}})
+
+    def test_a_failed_save_leaves_no_temp_file(self):
+        with mock.patch("i18n.os.replace", side_effect=OSError("disk full")), \
+                self.assertRaises(OSError):
+            i18n.save_sash_overrides({"en": {"New Season": "x"}})
+        self.assertEqual(os.listdir(self._dir.name), [])
 
     def test_save_writes_the_file_and_applies_it(self):
         i18n.save_sash_overrides({"de": {"New Season": "Neu"}})
@@ -209,6 +238,13 @@ class ApiTests(_LabelsFile):
                 r = self.client.put("/admin/api/sash-labels", headers=self.h, json=body)
                 self.assertEqual(r.status_code, 400)
         self.assertFalse(os.path.exists(self.path))
+
+    def test_stale_entries_dont_block_a_save(self):
+        self.write({"fr": {"New Season": "Neuve", "Gone Label": "x"}, "xx": {"New Season": "y"}})
+        shown = self.client.get("/admin/api/sash-labels", headers=self.h).json()["overrides"]
+        r = self.client.put("/admin/api/sash-labels", headers=self.h, json={"overrides": shown})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.read(), {"fr": {"New Season": "Neuve"}})
 
 
 if __name__ == "__main__":

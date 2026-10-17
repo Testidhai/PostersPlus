@@ -56,7 +56,9 @@ _MONTHS_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
 
 def load_languages() -> None:
     """Load every languages/*.json into memory once (call at startup)."""
+    global _SASH_TABLES
     _LANGS.clear()
+    _SASH_TABLES = {}
     if not os.path.isdir(_LANG_DIR):
         return
     for fn in os.listdir(_LANG_DIR):
@@ -106,6 +108,10 @@ MAX_OVERRIDE_LENGTH = 40
 _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
 # (mtime_ns, size) of the file the overrides were last read from.
 _loaded_stamp: tuple[int, int] | None = None
+# Merged tables by the chain of codes that built them (bounded by the codes
+# that exist, whatever *lang* a request sends).  Replaced, never cleared, on
+# a reload, so a render still holding the old overrides fills the old one.
+_SASH_TABLES: dict[tuple[str, ...], dict] = {}
 _checked_at = 0.0
 _CHECK_INTERVAL = 3.0
 
@@ -142,9 +148,10 @@ def _read_override_file() -> dict:
 def load_sash_overrides() -> None:
     """(Re)read the operator's overrides.  Swapped in whole, so a render
     reading them mid-reload sees one version or the other."""
-    global _OVERRIDES, _loaded_stamp
+    global _OVERRIDES, _SASH_TABLES, _loaded_stamp
     _loaded_stamp = _file_stamp()
     _OVERRIDES = _read_override_file()
+    _SASH_TABLES = {}         # after _OVERRIDES: _sash_table reads them the other way round
     if _OVERRIDES:
         n = sum(map(len, _OVERRIDES.values()))
         logger.info(f"sash_labels.json loaded: {n} labels across {sorted(_OVERRIDES)}")
@@ -165,18 +172,37 @@ def refresh_sash_overrides() -> bool:
     return True
 
 
+def _sash_chain(lang: str | None, overrides: dict | None = None) -> tuple[str, ...]:
+    """The codes a poster in *lang* reads sash labels from, most specific
+    first, ending at the first with a bundled table (English when none has
+    one).  Only codes with a table or overrides count."""
+    if overrides is None:
+        overrides = _OVERRIDES
+    chain = []
+    for code in dict.fromkeys([*_lang_candidates(lang), "en"]):
+        has_table = bool(_LANGS.get(code, {}).get("sashLabels"))
+        if has_table or code in overrides:
+            chain.append(code)
+        if has_table:
+            break
+    return tuple(chain)
+
+
 def _sash_table(lang: str | None) -> dict:
-    """The sashLabels table a poster in *lang* reads: the first candidate
-    language with a table or overrides, the operator's entries on top.  A
-    language without either reads English, as before."""
-    for code in [*_lang_candidates(lang), "en"]:
-        table = _LANGS.get(code, {}).get("sashLabels") or {}
-        extra = _OVERRIDES.get(code)
-        if extra:
-            return {**table, **extra}
-        if table:
-            return table
-    return {}
+    """The sashLabels table a poster in *lang* reads: the bundled table of
+    the first candidate language that has one (English when none does),
+    with the operator's overrides for every code down to it on top, the
+    most specific winning.  So an override for "fr-ca" rewords French for
+    fr-CA posters without hiding the rest of the French table."""
+    cache, overrides = _SASH_TABLES, _OVERRIDES
+    chain = _sash_chain(lang, overrides)
+    table = cache.get(chain)
+    if table is None:
+        table = dict(_LANGS.get(chain[-1], {}).get("sashLabels") or {}) if chain else {}
+        for code in reversed(chain):
+            table.update(overrides.get(code, {}))
+        cache[chain] = table
+    return table
 
 
 def sash_vocabulary() -> list[str]:
@@ -186,7 +212,10 @@ def sash_vocabulary() -> list[str]:
 
 def sash_override_state() -> dict:
     """What the dashboard's editor shows: each language's bundled labels and
-    the operator's overrides, as saved."""
+    the operator's overrides, as saved.  Overrides for a language or key the
+    bundled files no longer have (a hand-written file, or one saved before an
+    update renamed them) are left out, so the editor can show and save the
+    rest; the next save drops them."""
     keys = sash_vocabulary()
     en = _LANGS.get("en", {}).get("sashLabels") or {}
     builtin = {}
@@ -196,7 +225,10 @@ def sash_override_state() -> dict:
     return {
         "keys": keys,
         "builtin": builtin,
-        "overrides": _read_override_file(),
+        "overrides": {
+            code: kept for code, table in _read_override_file().items()
+            if code in builtin and (kept := {k: v for k, v in table.items() if k in en})
+        },
         "max_length": MAX_OVERRIDE_LENGTH,
     }
 
@@ -267,10 +299,17 @@ def save_sash_overrides(overrides: dict[str, dict[str, str]]) -> None:
     refresh_sash_overrides()."""
     directory = os.path.dirname(_OVERRIDE_PATH) or "."
     tmp = os.path.join(directory, f".{os.path.basename(_OVERRIDE_PATH)}.{os.getpid()}.tmp")
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(dict(sorted(overrides.items())), fh, indent=2, ensure_ascii=False)
-        fh.write("\n")
-    os.replace(tmp, _OVERRIDE_PATH)
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(dict(sorted(overrides.items())), fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+        os.replace(tmp, _OVERRIDE_PATH)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
     load_sash_overrides()
 
 
@@ -385,7 +424,8 @@ def upper_label(text: str | None, lang: str | None) -> str:
 def language_text(lang: str | None) -> str:
     """Every character a language's labels can put on a poster, upper case
     included (the landscape badge uppercases), for checking a font has them.
-    Empty for a language with no file: it draws the English labels."""
+    For a language with no file, which draws the English labels, only the
+    operator's English wording (if any)."""
     parts: list[str] = []
     for code in _lang_candidates(lang):
         data = _LANGS.get(code)
@@ -398,6 +438,9 @@ def language_text(lang: str | None) -> str:
             if isinstance(months, list):
                 parts.extend(str(m) for m in months)
             parts.append(str(data.get("digits") or ""))
+    # The operator's wording for every code the sash labels are read from,
+    # English's included when the language has no file and draws English.
+    for code in _sash_chain(lang):
         parts.extend(_OVERRIDES.get(code, {}).values())
     text = "".join(parts)
     return text + upper_label(text, lang)
