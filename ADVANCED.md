@@ -422,6 +422,17 @@ within a few seconds of changing, no restart needed.
 
 Default: `/app/cache/discovery_overrides.json`
 
+### `SASH_LABELS_PATH`
+
+JSON file that holds the operator's wording for sash labels ("New Season",
+"#{rank} Today", "Streams {month} {day}"), per poster language, on top of the
+bundled translations in `languages/`. The admin dashboard's Sash labels view
+writes it. The default sits inside the cache volume, so no extra mount is
+needed. The file is re-read within a few seconds of changing, no restart
+needed, and posters re-render as they are next requested.
+
+Default: `/app/cache/sash_labels.json`
+
 
 ### `LOGO_CONTRAST_RESCUE`
 

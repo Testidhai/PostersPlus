@@ -9,14 +9,21 @@
 # a missing key, a malformed file, or a language with no JSON at all simply falls
 # back to the English canonical string.  Nothing breaks if a translation is
 # absent — it just renders in English.
+#
+# The operator can reword any sash label per language from the dashboard's
+# Sash labels view, without touching languages/: the overrides live in
+# SASH_LABELS_PATH (the cache volume) and sit on top of the bundled table.
 import json
 import logging
 import os
 import re
+import time
 import unicodedata
 from contextvars import ContextVar
 
 from bidi import get_display
+
+import config as _cfg
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +94,186 @@ def _table(lang: str | None, key: str) -> dict:
     return {}
 
 
+# ── Operator sash label overrides ────────────────────────────────────────────
+# {"<lang code>": {"<sashLabels key>": "<text>"}, ...}, written by the
+# dashboard.  Keys are the English file's sashLabels keys; templates keep the
+# placeholders their English entry has ("{rank}", "{month}", ...).
+_OVERRIDE_PATH = _cfg.SASH_LABELS_PATH
+_OVERRIDES: dict[str, dict[str, str]] = {}
+# Same limit as the notable-name labels: the sash is narrow.  Counted without
+# the placeholders, which the renderer fills in.
+MAX_OVERRIDE_LENGTH = 40
+_PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
+# (mtime_ns, size) of the file the overrides were last read from.
+_loaded_stamp: tuple[int, int] | None = None
+_checked_at = 0.0
+_CHECK_INTERVAL = 3.0
+
+
+def _file_stamp() -> tuple[int, int] | None:
+    try:
+        st = os.stat(_OVERRIDE_PATH)
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
+def _read_override_file() -> dict:
+    try:
+        with open(_OVERRIDE_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return {}                     # normal — no overrides configured
+    except Exception as exc:
+        logger.warning(f"sash_labels.json: failed to parse ({exc}) — using the bundled labels")
+        return {}
+    if not isinstance(data, dict):
+        logger.warning("sash_labels.json: root must be a JSON object — ignoring")
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    for code, table in data.items():
+        if isinstance(table, dict):
+            clean = {str(k): str(v) for k, v in table.items() if str(v).strip()}
+            if clean:
+                out[str(code).strip().lower()] = clean
+    return out
+
+
+def load_sash_overrides() -> None:
+    """(Re)read the operator's overrides.  Swapped in whole, so a render
+    reading them mid-reload sees one version or the other."""
+    global _OVERRIDES, _loaded_stamp
+    _loaded_stamp = _file_stamp()
+    _OVERRIDES = _read_override_file()
+    if _OVERRIDES:
+        n = sum(map(len, _OVERRIDES.values()))
+        logger.info(f"sash_labels.json loaded: {n} labels across {sorted(_OVERRIDES)}")
+
+
+def refresh_sash_overrides() -> bool:
+    """Reload the overrides if the file changed — the dashboard writes it from
+    whichever worker served the save.  A clock read on most calls, one stat
+    every few seconds.  True when they were reloaded."""
+    global _checked_at
+    now = time.monotonic()
+    if now - _checked_at < _CHECK_INTERVAL:
+        return False
+    _checked_at = now
+    if _file_stamp() == _loaded_stamp:
+        return False
+    load_sash_overrides()
+    return True
+
+
+def _sash_table(lang: str | None) -> dict:
+    """The sashLabels table a poster in *lang* reads: the first candidate
+    language with a table or overrides, the operator's entries on top.  A
+    language without either reads English, as before."""
+    for code in [*_lang_candidates(lang), "en"]:
+        table = _LANGS.get(code, {}).get("sashLabels") or {}
+        extra = _OVERRIDES.get(code)
+        if extra:
+            return {**table, **extra}
+        if table:
+            return table
+    return {}
+
+
+def sash_vocabulary() -> list[str]:
+    """Every key an override can set: the English file's sashLabels keys."""
+    return list(_LANGS.get("en", {}).get("sashLabels") or {})
+
+
+def sash_override_state() -> dict:
+    """What the dashboard's editor shows: each language's bundled labels and
+    the operator's overrides, as saved."""
+    keys = sash_vocabulary()
+    en = _LANGS.get("en", {}).get("sashLabels") or {}
+    builtin = {}
+    for code, data in sorted(_LANGS.items()):
+        table = data.get("sashLabels") or {}
+        builtin[code] = {k: str(table.get(k) or en.get(k) or k) for k in keys}
+    return {
+        "keys": keys,
+        "builtin": builtin,
+        "overrides": _read_override_file(),
+        "max_length": MAX_OVERRIDE_LENGTH,
+    }
+
+
+def _check_placeholders(key: str, text: str, english: str) -> None:
+    have = set(_PLACEHOLDER_RE.findall(text))
+    want = set(_PLACEHOLDER_RE.findall(english))
+    # A release template may name or drop the window ("Streams {month} {day}"
+    # says it in words); the date parts and counts must stay.
+    optional = {"window"} if key.startswith(("releaseDay", "releaseMonth")) else set()
+    missing = want - optional - have
+    if missing:
+        raise ValueError(f"{key}: keep {', '.join('{' + m + '}' for m in sorted(missing))}")
+    unknown = have - want - optional
+    if unknown:
+        raise ValueError(f"{key}: unknown placeholder {', '.join('{' + u + '}' for u in sorted(unknown))}")
+
+
+def validate_sash_overrides(raw) -> dict[str, dict[str, str]]:
+    """An editor-sent {lang: {key: text}} as the file's contents: blanks and
+    entries matching the bundled label dropped.  Raises ValueError on
+    anything malformed."""
+    if not isinstance(raw, dict):
+        raise ValueError("overrides must be an object of languages")
+    english = _LANGS.get("en", {}).get("sashLabels") or {}
+    out: dict[str, dict[str, str]] = {}
+    for code, table in raw.items():
+        code = str(code).strip().lower()
+        if code not in _LANGS:
+            raise ValueError(f"unknown language: {code[:20]}")
+        if not isinstance(table, dict):
+            raise ValueError(f"{code}: labels must be an object")
+        bundled = _LANGS[code].get("sashLabels") or {}
+        clean: dict[str, str] = {}
+        for key, text in table.items():
+            key = str(key)
+            if key not in english:
+                raise ValueError(f"{code}: unknown sash label {key[:40]}")
+            if text is None:
+                continue
+            if not isinstance(text, str):
+                raise ValueError(f"{code}: {key} must be text")
+            text = " ".join(text.split())
+            if not text or text == bundled.get(key, english[key]):
+                continue
+            if len(_PLACEHOLDER_RE.sub("", text)) > MAX_OVERRIDE_LENGTH:
+                raise ValueError(f"{code}: {key} is longer than {MAX_OVERRIDE_LENGTH} characters")
+            _check_placeholders(key, text, english[key])
+            clean[key] = text
+        if clean:
+            out[code] = dict(sorted(clean.items()))
+    return out
+
+
+def sash_override_path() -> str:
+    return _OVERRIDE_PATH
+
+
+def sash_override_writable() -> bool:
+    if os.path.exists(_OVERRIDE_PATH):
+        return os.access(_OVERRIDE_PATH, os.W_OK)
+    return os.access(os.path.dirname(_OVERRIDE_PATH) or ".", os.W_OK)
+
+
+def save_sash_overrides(overrides: dict[str, dict[str, str]]) -> None:
+    """Write validated overrides (validate_sash_overrides) as the whole file,
+    atomically, then reload here; other workers pick it up in
+    refresh_sash_overrides()."""
+    directory = os.path.dirname(_OVERRIDE_PATH) or "."
+    tmp = os.path.join(directory, f".{os.path.basename(_OVERRIDE_PATH)}.{os.getpid()}.tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(dict(sorted(overrides.items())), fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    os.replace(tmp, _OVERRIDE_PATH)
+    load_sash_overrides()
+
+
 def _months_short(lang: str | None) -> tuple[str, ...]:
     for code in _lang_candidates(lang):
         months = _LANGS.get(code, {}).get("monthsShort")
@@ -155,7 +342,7 @@ def translate_sash(label: str | None, lang: str | None) -> str:
         return label or ""
     # A language without a file reads the English table, so English's own
     # wording (e.g. "Streams Sep 29") still applies rather than the raw label.
-    sl = _table(lang, "sashLabels") or _table("en", "sashLabels")
+    sl = _sash_table(lang)
     if not sl:
         return label
 
@@ -211,6 +398,7 @@ def language_text(lang: str | None) -> str:
             if isinstance(months, list):
                 parts.extend(str(m) for m in months)
             parts.append(str(data.get("digits") or ""))
+        parts.extend(_OVERRIDES.get(code, {}).values())
     text = "".join(parts)
     return text + upper_label(text, lang)
 
@@ -254,3 +442,6 @@ def visual(text: str | None) -> str:
     # Joiner controls mean nothing to a layout that doesn't join, and a font
     # may have no glyph for them (fonts.covers lets them through).
     return get_display(text.replace("\u200c", "").replace("\u200d", ""), base_dir="R")
+
+
+load_sash_overrides()

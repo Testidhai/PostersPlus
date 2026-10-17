@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Reword sash labels from the dashboard
+
+- The admin dashboard has a **Sash labels** view: pick a poster language
+  and change what any sash says ("New Season", "#{rank} Today",
+  "Streams {month} {day}") without editing `languages/`. A blank box keeps
+  the bundled translation. Templates must keep their placeholders; the save
+  is refused otherwise. Saved to `SASH_LABELS_PATH`
+  (`/app/cache/sash_labels.json`) in the cache volume, picked up by every
+  worker within seconds, and posters re-render as they are next requested.
+
 ### Up Next rows in Nuvio
 
 - AIOMetadata's Up Next, Resume and Unwatched rows (MDBList, Trakt, Simkl,

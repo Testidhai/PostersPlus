@@ -536,6 +536,12 @@ A large public instance can share the art its operator picks in the dashboard's 
 
 The dashboard stores the lists in `/app/cache/discovery_overrides.json` inside the cache volume, which can also be written by hand. See `discovery_overrides.example.json` for the format.
 
+## Rewording sash labels
+
+**Operators** can change what any sash says, in any poster language, in the admin dashboard's **Sash labels** view: pick a language, type over a label, and save. A blank box keeps the bundled translation from `languages/<code>.json`. Templates keep their placeholders: `{rank}` in the trending label, `{month}` with `{day}` or `{year}` in release dates (`{window}`, the release type, may be dropped or moved), and `{n}` in the season label. An English label also applies to poster languages that have no translation file. Changes apply without a restart, and posters re-render as they are next requested.
+
+The dashboard stores the labels in `/app/cache/sash_labels.json` inside the cache volume (`SASH_LABELS_PATH`), as `{"<language>": {"<label>": "<your wording>"}}`.
+
 ---
 
 ## Caching

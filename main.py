@@ -928,6 +928,7 @@ import config as _cfg
 import log_store
 log_store.install(_cfg.LOG_DIR, _cfg.LOG_VIEWER_MAX_MB, _TruncateUrlFilter._redact)
 import discovery
+import i18n
 from discovery import (
     ALL_PRIORITY_SLOTS,
     RELEASE_STATUS_SLOTS,
@@ -8511,9 +8512,10 @@ def _asset_file_digest(path: str) -> bytes | None:
 
 
 def _compute_render_assets_signature() -> str:
-    """Busts every composite when a language file, genre background or the
-    sash lists change.  By content, not mtime: every image build checks the
-    repo out afresh, which restamps every file, so an mtime signature
+    """Busts every composite when a language file, genre background, the
+    sash lists or the sash label overrides change.  By content, not mtime:
+    every image build checks the repo out afresh, which restamps every file,
+    so an mtime signature
     re-rendered every cached poster on each update whether or not an asset
     had changed."""
     digest = hashlib.sha256()
@@ -8535,20 +8537,21 @@ def _compute_render_assets_signature() -> str:
                     continue
                 digest.update(os.path.relpath(path, BASE_DIR).encode())
                 digest.update(content)
-    override_path = discovery.override_path()
-    try:
-        with open(override_path, "rb") as override_file:
-            digest.update(override_file.read())
-    except OSError:
-        pass
+    for override_path in (discovery.override_path(), i18n.sash_override_path()):
+        try:
+            with open(override_path, "rb") as override_file:
+                digest.update(override_file.read())
+        except OSError:
+            pass
     return digest.hexdigest()[:16]
 
 
 def _server_render_signature() -> str:
     global _render_assets_signature
-    # The dashboard's sash-list editor rewrites the overrides file on one
-    # worker; the others notice here and re-render under the new lists.
-    if discovery.refresh_overrides():
+    # The dashboard's sash-list and sash-label editors rewrite their files on
+    # one worker; the others notice here and re-render under the new ones.
+    # Both are checked every time (|, not or), so neither waits on the other.
+    if discovery.refresh_overrides() | i18n.refresh_sash_overrides():
         _render_assets_signature = _compute_render_assets_signature()
     return "|".join((
         f"render={_RENDER_CACHE_VERSION}",
@@ -9532,6 +9535,41 @@ async def admin_sash_lookup(request: Request, x_admin_key: str = Header(default=
     return _admin._json({
         "found": {n: _sash_lookup_cache[(section, n)] for n in names if (section, n) in _sash_lookup_cache},
     })
+
+
+@app.get("/admin/api/sash-labels")
+async def admin_sash_labels(request: Request, x_admin_key: str = Header(default="")):
+    await _admin._authorise(request, x_admin_key)
+    return _admin._json({
+        **i18n.sash_override_state(),
+        "path": i18n.sash_override_path(),
+        "writable": i18n.sash_override_writable(),
+    })
+
+
+@app.put("/admin/api/sash-labels")
+async def admin_sash_labels_save(request: Request, x_admin_key: str = Header(default="")):
+    """Body: {"overrides": {lang: {key: text}}}, the whole file: a language
+    or key left out goes back to the bundled label."""
+    global _render_assets_signature
+    await _admin._authorise(request, x_admin_key)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Body must be JSON")
+    try:
+        overrides = i18n.validate_sash_overrides(body.get("overrides") if isinstance(body, dict) else None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not i18n.sash_override_writable():
+        raise HTTPException(status_code=500, detail=f"{i18n.sash_override_path()} is not writable")
+    try:
+        i18n.save_sash_overrides(overrides)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not write the labels: {exc}")
+    _render_assets_signature = _compute_render_assets_signature()
+    logger.info(f"Admin: sash labels saved ({sum(map(len, overrides.values()))} across {sorted(overrides) or 'no languages'})")
+    return _admin._json({"overrides": i18n.sash_override_state()["overrides"]})
 
 
 # TMDB genre name → id, used only by the debug canvas preview below.

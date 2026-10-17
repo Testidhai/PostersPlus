@@ -624,6 +624,18 @@
   .sl-item.off { opacity: .55; }
   .sl-item.named { border-color: rgba(201,168,92,0.5); }
 
+  /* ── SASH LABELS ── */
+  .sb-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: var(--gap-field); }
+  .sb-tools select { width: auto; min-width: 200px; }
+  .sb-tools input[type="text"] { width: 220px; padding: 7px 11px; font-size: 11px; }
+  .sb-tools .sb-only { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); cursor: pointer; }
+  .sb-tools .sl-state { margin-left: auto; }
+  .sl-item .name .tmpl { color: var(--text-muted); font-size: 9.5px; margin-left: 6px; }
+  @media (max-width: 860px) {
+    .sb-tools select, .sb-tools input[type="text"] { width: 100%; }
+    .sb-tools .sl-state { margin-left: 0; }
+  }
+
   /* ── SASH LISTS ── */
   .sl-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: var(--gap-field); }
   .sl-tabs .art-seg { font-family: 'DM Sans', system-ui, sans-serif; }
@@ -985,7 +997,7 @@ async function boot() {
   // #artwork/<movie|tv>/<tmdb id> opens that title's editor (the configurator's
   // edit-artwork shortcut links here).
   const deep = hash.match(/^artwork\/(movie|tv)\/(\d+)$/);
-  setView(deep ? 'artwork' : hash && (hash === 'overview' || hash === 'artwork' || hash === 'reports' || hash === 'logs' || hash === 'sash-lists' || hash === 'presets' || hash === 'fonts' || hash === 'licences' || model.groups.some(g => slug(g.name) === hash)) ? hash : 'overview');
+  setView(deep ? 'artwork' : hash && (hash === 'overview' || hash === 'artwork' || hash === 'reports' || hash === 'logs' || hash === 'sash-lists' || hash === 'sash-labels' || hash === 'presets' || hash === 'fonts' || hash === 'licences' || model.groups.some(g => slug(g.name) === hash)) ? hash : 'overview');
   if (deep) artOpen(deep[1], deep[2]);
   clearInterval(statusTimer);
   statusTimer = setInterval(loadStatus, 15000);
@@ -1017,6 +1029,7 @@ function renderNav() {
   html += `<a href="#presets" data-view="presets" class="${activeView === 'presets' ? 'active' : ''}"><span>Presets</span>${pr.data ? `<span class="count">${pr.data.presets.length}</span>` : ''}</a>`;
   html += `<a href="#fonts" data-view="fonts" class="${activeView === 'fonts' ? 'active' : ''}"><span>Fonts</span>${ft.data && ft.data.fonts.length ? `<span class="count">${ft.data.fonts.length}</span>` : ''}</a>`;
   html += `<a href="#sash-lists" data-view="sash-lists" class="${activeView === 'sash-lists' ? 'active' : ''}"><span>Sash lists</span>${slDirtySections().length ? `<span class="chip dirty">${slDirtySections().length}</span>` : ''}</a>`;
+  html += `<a href="#sash-labels" data-view="sash-labels" class="${activeView === 'sash-labels' ? 'active' : ''}"><span>Sash labels</span>${sbDirty() ? '<span class="chip dirty">•</span>' : (sb.data && sbCount() ? `<span class="count">${sbCount()}</span>` : '')}</a>`;
   html += `<div class="nav-sep"></div><div class="nav-title">Settings</div>`;
   for (const g of model.groups) {
     const id = slug(g.name);
@@ -1377,6 +1390,7 @@ function renderView() {
   if (activeView === 'presets') { main.innerHTML = renderPresets(); if (!pr.data) loadPresets(); return; }
   if (activeView === 'licences') { main.innerHTML = renderLicences(); return; }
   if (activeView === 'fonts') { main.innerHTML = renderFonts(); if (!ft.data) loadFonts(); return; }
+  if (activeView === 'sash-labels') { main.innerHTML = renderSashLabels(); if (!sb.data && !sb.loading) loadSashLabels(); return; }
   if (activeView === 'sash-lists') { main.innerHTML = renderSashLists(); if (!sl.data) loadSashLists(); else slLookup(sl.section); return; }
   const g = model.groups.find(g => slug(g.name) === activeView);
   main.innerHTML = g ? renderGroup(g) : '';
@@ -2191,6 +2205,147 @@ function renderFonts() {
     </div></div>`;
   });
   return html + `</div></div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sash labels.  The operator's wording for any sash label, per language, on
+// top of the bundled translations (languages/*.json).  The whole map is held
+// here and saved as one file; a blank box keeps the bundled label, shown
+// greyed.  Saving changes the render signature, so posters re-render.
+const sb = { data: null, loading: false, error: '', lang: 'en', edits: {}, filter: '', only: false, saving: false };
+const SB_SHORT = 15;   // what fits the sash comfortably
+const sbLangNames = (() => { try { return new Intl.DisplayNames(['en'], { type: 'language' }); } catch (_) { return null; } })();
+function sbLangName(code) {
+  let n = code;
+  try { n = (sbLangNames && sbLangNames.of(code)) || code; } catch (_) {}
+  return n === code ? code : `${n} (${code})`;
+}
+
+async function loadSashLabels() {
+  sb.loading = true;
+  const r = await api('/admin/api/sash-labels');
+  sb.loading = false;
+  if (!r.ok) { sb.error = (r.body && r.body.detail) || 'Could not load the sash labels'; if (activeView === 'sash-labels') renderView(); return; }
+  sb.error = '';
+  sb.data = r.body;
+  sb.edits = JSON.parse(JSON.stringify(r.body.overrides));
+  if (!(sb.lang in sb.data.builtin)) sb.lang = 'en';
+  renderNav();
+  if (activeView === 'sash-labels') renderView();
+}
+// Overrides as the server keeps them (i18n.validate_sash_overrides): spaces
+// collapsed, blanks and copies of the bundled label dropped.
+function sbNorm(map) {
+  const out = [];
+  for (const [lang, table] of Object.entries(map || {}))
+    for (const [key, text] of Object.entries(table)) {
+      const t = String(text).trim().replace(/\s+/g, ' ');
+      if (t && sb.data && t !== sb.data.builtin[lang][key]) out.push(`${lang}/${key}=${t}`);
+    }
+  return out.sort().join('\n');
+}
+function sbDirty() { return !!sb.data && sbNorm(sb.edits) !== sbNorm(sb.data.overrides); }
+function sbCount(lang) {
+  const langs = lang ? [lang] : Object.keys(sb.edits);
+  return langs.reduce((n, l) => n + Object.values(sb.edits[l] || {}).filter(v => String(v).trim()).length, 0);
+}
+function sbValue(key, lang = sb.lang) { return ((sb.edits[lang] || {})[key]) || ''; }
+
+function renderSashLabels() {
+  let html = `<div class="panel"><div class="panel-header"><span class="panel-title">Sash labels</span><span class="panel-index">wording, per language</span></div><div class="panel-body">`;
+  if (!sb.data) return html + (sb.error
+    ? `<div class="sl-none">${esc(sb.error)} <button type="button" class="btn btn-secondary btn-small" onclick="loadSashLabels()">Retry</button></div></div></div>`
+    : `<div class="sl-none">Loading…</div></div></div>`);
+  html += `<div class="field-hint" style="margin:0 0 var(--gap-field)">What each sash says, in each poster language. A blank box keeps the bundled wording, shown greyed. Templates must keep their placeholders: <code>{rank}</code> for the trending rank, <code>{month}</code> with <code>{day}</code> or <code>{year}</code> for release dates (<code>{window}</code>, the release type, is optional), <code>{n}</code> for a season number. Studio, director and cast sashes are set in <a href="#sash-lists" onclick="event.preventDefault();setView('sash-lists')">Sash lists</a>. Saving re-renders posters as they're next requested.</div>`;
+  if (!sb.data.writable) html += `<div class="notice bad"><div class="notice-body"><p><strong>${esc(sb.data.path)} is not writable.</strong> Saves will fail; check the cache volume's mount and ownership.</p></div></div>`;
+  html += `<div id="sb-tools">${sbToolsHtml()}</div>`;
+  html += `<div id="sb-list">${sbListHtml()}</div>`;
+  return html + sbFootHtml() + `</div></div>`;
+}
+function sbToolsHtml() {
+  const opts = Object.keys(sb.data.builtin).map(code => {
+    const n = sbCount(code);
+    return `<option value="${esc(code)}" ${code === sb.lang ? 'selected' : ''}>${esc(sbLangName(code))}${n ? ` · ${n} changed` : ''}</option>`;
+  }).join('');
+  const n = sbCount(sb.lang);
+  return `<div class="sb-tools"><select aria-label="Poster language" onchange="sbSetLang(this.value)">${opts}</select>`
+    + `<input type="text" placeholder="Filter" value="${esc(sb.filter)}" autocomplete="off" oninput="sbSetFilter(this.value)">`
+    + `<label class="sb-only"><input type="checkbox" ${sb.only ? 'checked' : ''} onchange="sbSetOnly(this.checked)"> Changed only</label>`
+    + `<span class="sl-state"><span class="chip ${n ? 'file' : ''}">${n ? `${n} yours` : 'all bundled'}</span>${n ? `<button type="button" class="btn btn-secondary btn-small" onclick="sbResetLang()">Reset language</button>` : ''}</span></div>`;
+}
+function sbListHtml() {
+  const lang = sb.lang;
+  const f = sb.filter.trim().toLowerCase();
+  const builtin = sb.data.builtin[lang];
+  const english = sb.data.builtin.en || {};
+  const keys = sb.data.keys.filter(k => {
+    const v = sbValue(k);
+    if (sb.only && !v.trim()) return false;
+    return !f || k.toLowerCase().includes(f) || builtin[k].toLowerCase().includes(f) || v.toLowerCase().includes(f);
+  });
+  if (!keys.length) return `<div class="sl-none">${sb.only && !f ? 'No labels changed for this language.' : `No label matches “${esc(sb.filter)}”.`}</div>`;
+  return `<div class="sl-list">${keys.map(k => {
+    const v = sbValue(k);
+    const tmpl = english[k] && english[k] !== k ? english[k] : '';
+    const len = (v || builtin[k]).replace(/\{\w+\}/g, '').length;
+    return `<div class="sl-item ${v.trim() ? 'named' : ''}" data-key="${esc(k)}">
+      <div class="body">
+        <div class="name" title="${esc(k)}">${esc(k)}${tmpl ? `<span class="tmpl">${esc(tmpl)}</span>` : ''}</div>
+        <label class="sl-label"><span class="pre">Sash</span><input type="text" value="${esc(v)}" placeholder="${esc(builtin[k])}" maxlength="${sb.data.max_length + 24}" oninput="sbSet(this)" aria-label="Sash label for ${esc(k)}"><span class="cnt ${len > SB_SHORT ? 'long' : ''}" title="Labels over ${SB_SHORT} characters may be squeezed on the sash">${len}</span></label>
+      </div>
+      ${v.trim() ? `<button type="button" class="sl-remove" title="Back to “${esc(builtin[k])}”" aria-label="Reset ${esc(k)}" onclick="sbReset(this)">×</button>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+function sbFootHtml() {
+  const dirty = sbDirty();
+  return `<div class="tcn-foot" id="sb-foot"><span class="msg">${dirty ? 'Unsaved changes' : ''}</span><button type="button" class="btn btn-secondary" onclick="sbDiscard()" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="btn btn-primary" onclick="sbSave()" ${dirty && !sb.saving ? '' : 'disabled'}>${sb.saving ? 'Saving…' : 'Save labels'}</button></div>`;
+}
+function sbRender(part) {
+  const ids = part ? [part] : ['tools', 'list'];
+  for (const id of ids) { const el = document.getElementById('sb-' + id); if (el) el.innerHTML = id === 'tools' ? sbToolsHtml() : sbListHtml(); }
+  const foot = document.getElementById('sb-foot');
+  if (foot) foot.outerHTML = sbFootHtml();
+  renderNav();
+}
+function sbSetLang(code) { sb.lang = code; sbRender(); }
+function sbSetFilter(v) { sb.filter = v; sbRender('list'); }
+function sbSetOnly(on) { sb.only = on; sbRender('list'); }
+// Typing updates the counts and footer only: re-rendering the list would
+// take the focus away.
+function sbSet(input) {
+  const key = input.closest('.sl-item').dataset.key;
+  const table = sb.edits[sb.lang] = sb.edits[sb.lang] || {};
+  if (input.value.trim()) table[key] = input.value;
+  else delete table[key];
+  const item = input.closest('.sl-item');
+  item.classList.toggle('named', !!input.value.trim());
+  const len = (input.value || input.placeholder).replace(/\{\w+\}/g, '').length;
+  const cnt = item.querySelector('.cnt');
+  cnt.textContent = len;
+  cnt.classList.toggle('long', len > SB_SHORT);
+  sbRender('tools');
+}
+function sbReset(btn) {
+  const key = btn.closest('.sl-item').dataset.key;
+  if (sb.edits[sb.lang]) delete sb.edits[sb.lang][key];
+  sbRender();
+}
+function sbResetLang() {
+  if (!confirm(`Put every ${sbLangName(sb.lang)} sash label back to the bundled wording?\n\nNothing is saved until you press Save labels.`)) return;
+  delete sb.edits[sb.lang];
+  sbRender();
+}
+function sbDiscard() { sb.edits = JSON.parse(JSON.stringify(sb.data.overrides)); sbRender(); }
+async function sbSave() {
+  sb.saving = true; sbRender('none');
+  const r = await api('/admin/api/sash-labels', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides: sb.edits }) });
+  sb.saving = false;
+  if (!r.ok) { toast((r.body && r.body.detail) || `Save failed (HTTP ${r.status})`); sbRender('none'); return; }
+  sb.data.overrides = r.body.overrides;
+  sb.edits = JSON.parse(JSON.stringify(r.body.overrides));
+  sbRender();
+  toast('Sash labels saved — posters pick them up as they re-render');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

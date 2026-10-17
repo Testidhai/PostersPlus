@@ -713,6 +713,9 @@ YUNET_MODEL_PATH           = _env("YUNET_MODEL_PATH", "", group='Rendering', kin
 DISCOVERY_OVERRIDES_PATH   = _env("DISCOVERY_OVERRIDES_PATH", "/app/cache/discovery_overrides.json", group='Rendering', kind='text',
     label='Discovery overrides path', help='JSON file holding the notable studio, director and cast lists behind those sashes. The dashboard\'s Sash lists view writes it; see discovery_overrides.example.json to write it by hand.',
     advanced=True).strip() or "/app/cache/discovery_overrides.json"
+SASH_LABELS_PATH           = _env("SASH_LABELS_PATH", "/app/cache/sash_labels.json", group='Rendering', kind='text',
+    label='Sash labels path', help='JSON file holding the operator\'s wording for sash labels ("New Season", "#{rank} Today"), per language, on top of the bundled translations. The dashboard\'s Sash labels view writes it.',
+    advanced=True).strip() or "/app/cache/sash_labels.json"
 
 # Prefer textless posters with enough votes to be meaningful, but never allow
 # vote count alone to select art rated far below the best available option.
