@@ -10102,6 +10102,10 @@ async def get_poster(
     imdb_id = _normalise_optional_id(imdb_id, "imdb_id")
     tmdb_id = _normalise_optional_id(tmdb_id, "tmdb_id")
 
+    # An Up Next row's synthetic id is unwrapped first, so the rest of the
+    # request sees the show's id exactly as a plain catalogue row sends it.
+    stremio_id = _unwrap_stremio_id(stremio_id)
+
     # AIOMetadata's "{id}" is the raw Stremio meta id, and for an ordinary title
     # that IS the IMDb id ("tt0903747"). Generated templates no longer send
     # imdb_id — a required placeholder with no value nulls the whole url — so
@@ -10113,9 +10117,6 @@ async def get_poster(
     #
     # Parsed here rather than in _resolve_anime_request because that returns
     # early when anime sources are disabled, and this is not an anime concern.
-    # An Up Next row's synthetic id is unwrapped first, so the rest of the
-    # request sees the show's id exactly as a plain catalogue row sends it.
-    stremio_id = _unwrap_stremio_id(stremio_id)
     if not imdb_id and stremio_id:
         _stremio_hint = stremio_id.strip()
         if _IMDB_ID_RE.match(_stremio_hint):
@@ -10231,7 +10232,7 @@ async def get_poster(
                     status_code=400,
                     detail=(
                         "Missing required parameter: /poster needs tmdb_id or imdb_id "
-                        "(or a tt... or tvdb:... stremio_id) to identify the title. "
+                        "(or a tt..., tmdb:... or tvdb:... stremio_id) to identify the title. "
                         "Sending both is best: tmdb_id selects the artwork and "
                         "metadata, imdb_id adds the IMDb-keyed enrichment (Metahub "
                         "logo fallback, digital-release detection, stream-quality badges)."
