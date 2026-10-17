@@ -1717,6 +1717,32 @@ def _parse_tvdb_stremio_id(stremio_id: str) -> int | None:
     return int(raw) if len(raw) <= 10 and int(raw) > 0 else None
 
 
+# AIOMetadata's Up Next, Resume and Unwatched rows give each item a synthetic
+# meta id that wraps the show's real one with the episode it points at, so the
+# row's cache entry moves on when the episode does: "upnext_tt0121955_trakt123"
+# (Trakt), "mdblist_upnext_tmdb:2190_S1E1", "simkl_upnext_tt0121955_S1E1",
+# "pmdb_resume_tmdb:2190_S1E1" (a movie's has nothing after the last "_") and
+# "unwatched_tt0121955". Nuvio reads none of the per-service ids out of these,
+# so {id} is all that reaches us.
+_WRAPPED_STREMIO_ID_RE = re.compile(
+    r'^(?:(?:mdblist_upnext|simkl_upnext|pmdb_resume|upnext)_(?P<row>[^_]+)_[A-Za-z0-9]*'
+    r'|unwatched_(?P<plain>[^_]+))\Z'
+)
+_UNWRAPPED_ID_RE = re.compile(r'^(?:tt[0-9]{1,10}|(?:tmdb|tvdb|kitsu|anilist|mal):[0-9]{1,10})\Z')
+_TMDB_STREMIO_ID_RE = re.compile(r'^tmdb:([0-9]{1,10})\Z')
+
+
+def _unwrap_stremio_id(stremio_id: str) -> str:
+    """The title's own id inside one of AIOMetadata's synthetic row ids, or
+    *stremio_id* unchanged when it isn't one."""
+    raw = (stremio_id or "").strip()
+    m = _WRAPPED_STREMIO_ID_RE.match(raw)
+    if m is None:
+        return stremio_id
+    inner = m.group("row") or m.group("plain")
+    return inner if _UNWRAPPED_ID_RE.match(inner) else stremio_id
+
+
 async def _resolve_tvdb_identity(
     tvdb_id: int, media_type: str, tmdb_key: str | None,
 ) -> "tuple[str, str, bool]":
@@ -10087,10 +10113,19 @@ async def get_poster(
     #
     # Parsed here rather than in _resolve_anime_request because that returns
     # early when anime sources are disabled, and this is not an anime concern.
+    # An Up Next row's synthetic id is unwrapped first, so the rest of the
+    # request sees the show's id exactly as a plain catalogue row sends it.
+    stremio_id = _unwrap_stremio_id(stremio_id)
     if not imdb_id and stremio_id:
         _stremio_hint = stremio_id.strip()
         if _IMDB_ID_RE.match(_stremio_hint):
             imdb_id = _stremio_hint
+    # Likewise a "tmdb:<id>" {id} names the TMDB entry when no tmdb_id came
+    # with it — Nuvio fills {tmdb_id?} from one, but not from a wrapped one.
+    if not tmdb_id and stremio_id:
+        _tmdb_hint = _TMDB_STREMIO_ID_RE.match(stremio_id.strip())
+        if _tmdb_hint:
+            tmdb_id = _tmdb_hint.group(1)
 
     # -----------------------------------------------------------------------
     # Anime-native ids (AniList / Kitsu).

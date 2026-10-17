@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Up Next rows in Nuvio
+
+- AIOMetadata's Up Next, Resume and Unwatched rows (MDBList, Trakt, Simkl,
+  PublicMetaDB) now get posters in Nuvio. Their items carry ids such as
+  `mdblist_upnext_tmdb:2190_S1E1` or `upnext_tt0121955_trakt123`. From
+  those, Nuvio fills only `{id}`, so every request was refused for having
+  no title id and the tile stayed blank. `stremio_id` is now unwrapped to
+  the show's own id and renders as a plain row of that show would.
+- A `tmdb:<id>` `stremio_id` with no `tmdb_id` alongside now names the
+  TMDB entry, as a `tt…` one already named the IMDb id.
+
 ### More landscape settings of its own
 
 - The graphic badges' looks (Quality, Certificate and Logo style, Cinema
