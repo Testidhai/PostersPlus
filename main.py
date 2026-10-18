@@ -767,7 +767,7 @@ def _mdblist_server_key_label(key: str | None) -> str:
 
 
 def _mark_mdblist_rate_limit(
-    canonical_id: str, key: str, result
+    canonical_id: str | None, key: str, result
 ) -> tuple[float, str | None]:
     """Record a _RateLimited result; returns (seconds to wait, fallback key).
 
@@ -785,6 +785,9 @@ def _mark_mdblist_rate_limit(
       cooled down or rotated — the fallback is always None. Nothing is
       recorded against the title either; it is retried as soon as the pause
       lifts.
+
+    *canonical_id* is None for a refusal that wasn't about one title (a bulk
+    request): the key's cooldown is recorded, and no per-title backoff.
     """
     global _mdblist_ip_pause_until
     now = asyncio.get_running_loop().time()
@@ -799,7 +802,8 @@ def _mark_mdblist_rate_limit(
     else:
         backoff_secs = min(max(float(reset_at) - time.time(), 60.0), 86400.0)
     _mdblist_key_cooldown[key] = now + backoff_secs
-    _rating_backoff[_rating_retry_key(canonical_id, key)] = now + backoff_secs
+    if canonical_id:
+        _rating_backoff[_rating_retry_key(canonical_id, key)] = now + backoff_secs
     return backoff_secs, _next_mdblist_server_key(key, now)
 
 
@@ -992,7 +996,6 @@ from tmdb import composite_logo, logo_centre_y, fetch_logo, image_language_order
 # the same as that list's retry cooldown.
 from tmdb import _TRENDING_SOURCE_RETRY_SECS as _TRENDING_UNREAD_TTL
 from tmdb import trending_source_signature
-from tmdb import tmdb_true_story
 
 import tvdb
 import anime
@@ -6770,9 +6773,9 @@ async def _run_cache_warm_cycle(client: httpx.AsyncClient) -> None:
             effective_mdblist_key = _key
         return _key
 
-    def _on_rate_limited(label: str, key: str, result) -> None:
+    def _on_rate_limited(label: str, key: str, result, canonical_id: str | None = None) -> None:
         nonlocal burst_pauses, mdblist_budget, effective_mdblist_key
-        backoff_secs, replacement = _mark_mdblist_rate_limit(label, key, result)
+        backoff_secs, replacement = _mark_mdblist_rate_limit(canonical_id, key, result)
         if not result.quota_exhausted:
             burst_pauses += 1
             logger.warning(
@@ -6796,6 +6799,12 @@ async def _run_cache_warm_cycle(client: httpx.AsyncClient) -> None:
             logger.info("Cache warm: no healthy MDBList key remains — stopping MDBList warming for this cycle")
             mdblist_budget = mdblist_calls  # stop further MDBList attempts
 
+    def _count_bulk_request() -> None:
+        """fetch_ratings_bulk's per-POST callback: a call can send several."""
+        nonlocal mdblist_calls, mdblist_bulk_requests
+        mdblist_calls += 1
+        mdblist_bulk_requests += 1
+
     async def _warm_single(item: dict) -> None:
         """One title by the single call — bulk's fall-back."""
         nonlocal mdblist_calls, mdblist_budget
@@ -6803,15 +6812,14 @@ async def _run_cache_warm_cycle(client: httpx.AsyncClient) -> None:
         if _key is None:
             return
         await asyncio.sleep(0.25)
-        async with _mdblist_semaphore:
-            await _mdblist_wait_for_slot()
+        async with _mdblist_outbound():
             result = await fetch_rating(
                 client, _key, item["genre_ids"], item["media_type"],
                 media_id=item["media_id"], provider=item["provider"],
             )
         mdblist_calls += 1
         if isinstance(result, _RateLimited):
-            _on_rate_limited(item["canonical_id"], _key, result)
+            _on_rate_limited(item["canonical_id"], _key, result, item["canonical_id"])
             return
         if result is FETCH_FAILED:
             logger.warning(f"Cache warm: MDBList fetch failed for {item['canonical_id']} — stopping MDBList warming for this cycle")
@@ -6837,32 +6845,39 @@ async def _run_cache_warm_cycle(client: httpx.AsyncClient) -> None:
             if _key is None:
                 break
             _label = f"bulk {_provider}/{_mdb_type} ({len(_chunk)} titles)"
-            async with _mdblist_semaphore:
-                await _mdblist_wait_for_slot()
+            async with _mdblist_outbound():
                 result = await fetch_ratings_bulk(
                     client, _key, _provider, _mdb_type,
                     [it["media_id"] for it in _chunk],
                     genre_ids={it["media_id"]: it["genre_ids"] for it in _chunk},
+                    on_request=_count_bulk_request,
                 )
-            mdblist_calls += 1
-            mdblist_bulk_requests += 1
-            if isinstance(result, _RateLimited):
-                _on_rate_limited(_label, _key, result)
-                continue
-            if result is FETCH_FAILED:
-                # Bulk is now off for a while (or the network failed): the
-                # chunk goes the old way, one title per call, within budget.
-                logger.warning(f"Cache warm: MDBList {_label} failed — falling back to single calls")
-                for _item in _chunk:
+            if not isinstance(result, dict):
+                result = {it["media_id"]: result for it in _chunk}
+            # One refusal stops the call, so at most one _RateLimited is in it.
+            _limited = next((a for a in result.values() if isinstance(a, _RateLimited)), None)
+            if _limited is not None:
+                _on_rate_limited(_label, _key, _limited)
+            _fallback: list[dict] = []
+            for _item in _chunk:
+                _answer = result.get(_item["media_id"], FETCH_FAILED)
+                if isinstance(_answer, tuple):
+                    await _store_warm_rating(_item, _answer)
+                    mdblist_bulk_titles += 1
+                elif _answer is FETCH_FAILED:
+                    _fallback.append(_item)
+                # A rate-limited title stays uncached; the next fetch waits out the pause.
+            if _fallback:
+                # Bulk is now off for a while (or the network failed): what it
+                # didn't answer goes the old way, one title per call, within budget.
+                logger.warning(
+                    f"Cache warm: MDBList {_label} failed for {len(_fallback)} titles "
+                    "— falling back to single calls"
+                )
+                for _item in _fallback:
                     if mdblist_calls >= mdblist_budget:
                         break
                     await _warm_single(_item)
-                continue
-            for _item in _chunk:
-                _answer = result.get(_item["media_id"])
-                if _answer is not None:
-                    await _store_warm_rating(_item, _answer)
-                    mdblist_bulk_titles += 1
 
     if _pending_detections:
         await asyncio.gather(*_pending_detections, return_exceptions=True)
@@ -10614,7 +10629,8 @@ async def get_poster(
                 + _season_sig
                 + _anime_tmdb_sig
                 # Which award lists (award_lists.py) the title is on: a list
-                # update re-renders the posters it changes and no others.
+                # update re-renders the posters it changes and no others (or,
+                # for a request without an IMDb id, every one).
                 + award_lists.signature(imdb_id or None)
             ).encode()
         ).hexdigest()[:16]
@@ -12644,14 +12660,14 @@ async def get_poster(
         # Cult, festival and Best Picture come from the id lists, true story
         # from TMDB's keywords; the keyword flags above remain the fallback.
         _list_imdb_id = effective_imdb_id or imdb_id or None
-        award_wins, award_noms, festival_keyword, is_cult, is_true_story = award_lists.derive(
+        # (The festival list is read where the sash label is chosen.)
+        award_wins, award_noms, is_cult, is_true_story = award_lists.derive(
             _list_imdb_id,
             award_wins=award_wins,
             award_noms=award_noms,
-            festival_keyword=festival_keyword,
             keyword_cult=is_cult,
             keyword_true_story=is_true_story,
-            tmdb_true_story=await _db_call(tmdb_true_story, type, tmdb_id) if has_tmdb_id else None,
+            tmdb_true_story=tmdb_data.get("true_story"),
         )
 
         # ------------------------------------------------------------------

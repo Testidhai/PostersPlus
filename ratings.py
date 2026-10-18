@@ -2,6 +2,7 @@
 import logging
 import math
 import time
+from typing import Callable
 import httpx
 import numpy as np
 
@@ -190,6 +191,10 @@ def remember_mdblist_release_dates(media_id: str, media_type: str, data: dict) -
         return
     released = str(data.get("released") or "")[:10] or None
     digital  = str(data.get("released_digital") or "")[:10] or None
+    if "released_digital" not in data:
+        # The bulk record has no digital date at all — unknown, not "none yet":
+        # keep the one an earlier single call remembered.
+        digital = (mdblist_release_dates(media_id, media_type) or {}).get("released_digital")
     if not released and not digital:
         return
     try:
@@ -501,17 +506,23 @@ async def fetch_ratings_bulk(
     ids: list[str],
     *,
     genre_ids: dict[str, list[int]] | None = None,
-) -> "dict[str, tuple] | _FetchFailed | _RateLimited":
+    on_request: Callable[[], None] | None = None,
+) -> "dict[str, tuple | _FetchFailed | _RateLimited] | _FetchFailed | _RateLimited":
     """Ratings for many titles of one type at once.
 
     Returns ``{id: (ratings_dict, genre, release_date, keywords, age_rating)}``
     — fetch_rating's answer, per title — for every id in *ids*.  An id MDBList
     doesn't know comes back as fetch_rating's 404 answer; an IMDb id is first
     asked again under the other type, as fetch_rating does.  *genre_ids* maps
-    an id to its TMDB genre ids, for the genre label.
+    an id to its TMDB genre ids, for the genre label.  *on_request* is called
+    once per POST sent, which can be more than one for a call.
 
-    Returns _RateLimited on 429 / 503, and FETCH_FAILED on a network error or
-    when bulk is (or just got) disabled — the caller then makes single calls.
+    A request refused with 429 / 503 gives _RateLimited, and a network error or
+    bulk turning itself off gives FETCH_FAILED (the caller then makes single
+    calls).  Requests after a failure aren't sent; the ids they or the failed
+    one would have answered map to that failure, and the rest keep the answers
+    already received.  When nothing was answered the failure is returned alone,
+    as it is when bulk is already off.
     """
     ids = [str(i) for i in dict.fromkeys(ids) if i]
     if not ids:
@@ -521,33 +532,43 @@ async def fetch_ratings_bulk(
     genre_ids = genre_ids or {}
 
     records: dict[str, tuple[dict, str]] = {}   # id -> (record, media type it answered as)
+    unanswered: set[str] = set()                # ids a failed or unsent request held
+    failure = None
 
-    async def _ask(type_: str, wanted: list[str]):
+    async def _ask(type_: str, wanted: list[str]) -> None:
+        nonlocal failure
         answered_as = "tv" if type_ == "show" else "movie"
         for i in range(0, len(wanted), MDBLIST_BULK_MAX_IDS):
-            got = await _bulk_post(client, mdblist_key, provider, type_, wanted[i:i + MDBLIST_BULK_MAX_IDS])
+            chunk = wanted[i:i + MDBLIST_BULK_MAX_IDS]
+            if failure is not None:
+                unanswered.update(chunk)
+                continue
+            if on_request is not None:
+                on_request()
+            got = await _bulk_post(client, mdblist_key, provider, type_, chunk)
             if got is None:
-                return FETCH_FAILED
+                got = FETCH_FAILED
             if isinstance(got, _RateLimited) or got is FETCH_FAILED:
-                return got
+                failure = got
+                unanswered.update(chunk)
+                continue
             records.update({k: (v, answered_as) for k, v in got.items()})
-        return None
 
-    failed = await _ask(mdb_type, ids)
-    if failed is not None:
-        return failed
-    missing = [i for i in ids if i not in records]
+    await _ask(mdb_type, ids)
+    missing = [i for i in ids if i not in records and i not in unanswered]
     if missing and provider == "imdb":
-        failed = await _ask("movie" if mdb_type == "show" else "show", missing)
-        if failed is not None:
-            return failed
+        await _ask("movie" if mdb_type == "show" else "show", missing)
+    if failure is not None and not records:
+        return failure
 
-    out: dict[str, tuple] = {}
+    out: dict[str, tuple | _FetchFailed | _RateLimited] = {}
     for media_id in ids:
         genre = genre_label(genre_ids.get(media_id) or [], GENRE_PRIORITY)
         if media_id in records:
             record, answered_as = records[media_id]
             out[media_id] = _parse_mdblist_title(record, media_id, answered_as, genre)
+        elif media_id in unanswered:
+            out[media_id] = failure
         else:
             logger.info(f"MDblist bulk: {provider}/{media_id} not found — returning empty result")
             out[media_id] = ({}, genre, None, [], None)

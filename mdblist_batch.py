@@ -10,7 +10,7 @@ never with the server key's, nor anyone else's.
 
 A batch of one goes by the single call: the same one request, and it still
 carries keywords.  When the bulk call fails in a way that turned bulk off, the
-batch's titles fall back to single calls; while bulk is off, ``enabled()`` says
+titles it didn't answer fall back to single calls; while bulk is off, ``enabled()`` says
 so and the caller skips the batcher altogether.
 
 *gate* is an async context manager factory entered around every outbound
@@ -107,20 +107,25 @@ class RatingBatcher:
             else:
                 async with self._gate():
                     result = await self._bulk(client, key, provider, mdb_type, ids, genre_ids=batch.genre_ids)
-                if result is FETCH_FAILED and not self._bulk_available():
-                    # Bulk just turned itself off: this batch goes the old way.
-                    logger.info(f"MDBList bulk unavailable — {len(ids)} batched titles fall back to single calls")
+                if isinstance(result, dict):
+                    answers = {i: result.get(i, FETCH_FAILED) for i in ids}
+                else:
+                    # _RateLimited, or a failure: the same answer for all.
+                    answers = {i: result for i in ids}
+                retry = [] if self._bulk_available() else [
+                    i for i, a in answers.items() if a is FETCH_FAILED]
+                if retry:
+                    # Bulk just turned itself off: what it didn't answer goes
+                    # the old way.  (A network failure with bulk still on is a
+                    # failure for those titles, as it is for a single call.)
+                    logger.info(f"MDBList bulk unavailable — {len(retry)} batched titles fall back to single calls")
                     singles = await asyncio.gather(
-                        *(self._single_for(client, key, provider, batch, i) for i in ids),
+                        *(self._single_for(client, key, provider, batch, i) for i in retry),
                         return_exceptions=True,
                     )
-                    answers = dict(zip(ids, singles))
+                    answers.update(zip(retry, singles))
                 elif isinstance(result, dict):
-                    answers = {i: result.get(i, FETCH_FAILED) for i in ids}
                     logger.info(f"MDBList batch of {len(ids)} {provider}/{mdb_type} titles answered in bulk")
-                else:
-                    # _RateLimited, or a network failure: the same answer for all.
-                    answers = {i: result for i in ids}
         except Exception as exc:  # noqa: BLE001 - every waiter must be woken
             answers = {i: exc for i in ids}
         for media_id, futures in batch.waiters.items():

@@ -10,7 +10,9 @@ the two films, in its own order, and left the show and the unknown id out.
 
 import asyncio
 import json
+import os
 import sys
+import tempfile
 import time
 import unittest
 from contextlib import asynccontextmanager
@@ -20,6 +22,7 @@ from unittest import mock
 import httpx
 
 import award_lists
+import cache
 import festivals
 import main
 import ratings
@@ -61,6 +64,20 @@ class _BulkServer:
 
     def client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(transport=httpx.MockTransport(self.handler))
+
+
+class _RefusingServer(_BulkServer):
+    """A _BulkServer that answers POST number *refuse_at* (1-based) with a 503."""
+
+    def __init__(self, known, refuse_at: int):
+        super().__init__(known)
+        self.refuse_at = refuse_at
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and len(self.posts) + 1 == self.refuse_at:
+            self.posts.append((request.url.path, json.loads(request.content)["ids"]))
+            return httpx.Response(503, json={})
+        return super().handler(request)
 
 
 class _BulkTestCase(unittest.IsolatedAsyncioTestCase):
@@ -131,6 +148,36 @@ class FetchRatingsBulkTests(_BulkTestCase):
             out = await ratings.fetch_ratings_bulk(client, "key", "tmdb", "show", ["123"])
         self.assertEqual(len(server.posts), 1)
         self.assertEqual(out["123"][0], {})
+
+    async def test_a_later_refusal_keeps_the_answers_already_received(self):
+        ids = [f"tt{i:07d}" for i in range(250)]
+        server = _RefusingServer({"movie": {i: _record(i) for i in ids}}, refuse_at=2)
+        async with server.client() as client:
+            out = await ratings.fetch_ratings_bulk(client, "key", "imdb", "movie", ids)
+        self.assertEqual(len(server.posts), 2)
+        self.assertTrue(all(isinstance(out[i], tuple) for i in ids[:200]))
+        self.assertTrue(all(isinstance(out[i], _RateLimited) for i in ids[200:]))
+
+    async def test_a_refused_reask_leaves_its_ids_unanswered_not_missing(self):
+        server = _RefusingServer({"movie": {"tt1": _record("tt1")}}, refuse_at=2)
+        async with server.client() as client:
+            out = await ratings.fetch_ratings_bulk(client, "key", "imdb", "movie", ["tt1", "tt2"])
+        self.assertEqual(out["tt1"][0], {"imdb": 7.0})
+        self.assertIsInstance(out["tt2"], _RateLimited)
+
+    async def test_a_refusal_before_any_answer_is_returned_alone(self):
+        server = _RefusingServer({"movie": {"tt1": _record("tt1")}}, refuse_at=1)
+        async with server.client() as client:
+            out = await ratings.fetch_ratings_bulk(client, "key", "imdb", "movie", ["tt1"])
+        self.assertIsInstance(out, _RateLimited)
+
+    async def test_on_request_is_called_for_every_post(self):
+        sent = []
+        server = _BulkServer({"movie": {"tt1": _record("tt1")}, "show": {"tt2": _record("tt2", "show")}})
+        async with server.client() as client:
+            await ratings.fetch_ratings_bulk(client, "key", "imdb", "movie", ["tt1", "tt2"],
+                                             on_request=lambda: sent.append(1))
+        self.assertEqual(len(sent), len(server.posts), 2)
 
     async def test_429_is_rate_limited_and_keeps_bulk_on(self):
         server = _BulkServer({}, status=429, headers={"retry-after": "10", "x-ratelimit-remaining": "5"})
@@ -262,6 +309,19 @@ class RatingBatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sorted(m for _k, m in self.single_calls), ["tt0", "tt1", "tt2"])
         self.assertTrue(all(r[0] == {"imdb": 6.0} for r in out))
 
+    async def test_bulk_turning_off_midway_retries_only_what_it_did_not_answer(self):
+        state = {"on": True}
+
+        def partial(ids):
+            state["on"] = False
+            return {ids[0]: ({"imdb": 7.0}, "Drama", None, [], None),
+                    **{i: FETCH_FAILED for i in ids[1:]}}
+        b = self._batcher(bulk_result=partial, available=lambda: state["on"])
+        out = await asyncio.gather(*(b.fetch(None, "k", [], "movie", media_id=f"tt{i}", provider="imdb")
+                                     for i in range(3)))
+        self.assertEqual(sorted(m for _k, m in self.single_calls), ["tt1", "tt2"])
+        self.assertEqual([r[0] for r in out], [{"imdb": 7.0}, {"imdb": 6.0}, {"imdb": 6.0}])
+
     async def test_network_failure_with_bulk_still_on_is_a_failure_for_all(self):
         b = self._batcher(bulk_result=lambda ids: FETCH_FAILED)
         out = await asyncio.gather(*(b.fetch(None, "k", [], "movie", media_id=f"tt{i}", provider="imdb")
@@ -299,31 +359,29 @@ class AwardListTests(unittest.TestCase):
 
     def test_signature_is_empty_off_the_lists(self):
         self.assertEqual(award_lists.signature("tt0000001"), "")
-        self.assertEqual(award_lists.signature(None), "")
+        self.assertRegex(award_lists.signature(None), r"^\|alv=[0-9a-f]{8}$")
         self.assertEqual(award_lists.signature("tt0071315"), "|al=cannes.bpnom")
         self.assertEqual(award_lists.signature("tt0073629"), "|al=c")
 
     def test_derive_adds_list_flags_and_keeps_keyword_fallback(self):
-        wins, noms, fest, cult, true_story = award_lists.derive(
+        wins, noms, cult, true_story = award_lists.derive(
             "tt0068646", award_wins=["Globe Winner"], award_noms=["Oscar Nominee"],
-            festival_keyword=None, keyword_cult=False, keyword_true_story=False, tmdb_true_story=True)
+            keyword_cult=False, keyword_true_story=False, tmdb_true_story=True)
         self.assertEqual(wins, ["Oscar Winner", "Globe Winner"])
         self.assertEqual(noms, [])
-        self.assertIsNone(fest)
         self.assertFalse(cult)
         self.assertTrue(true_story)
 
-        wins, noms, fest, cult, true_story = award_lists.derive(
-            "tt0000001", award_wins=[], award_noms=[], festival_keyword="festival-berlin-winner",
+        wins, noms, cult, true_story = award_lists.derive(
+            "tt0000001", award_wins=[], award_noms=[],
             keyword_cult=True, keyword_true_story=True, tmdb_true_story=None)
-        self.assertEqual((wins, noms, fest, cult, true_story), ([], [], "festival-berlin-winner", True, True))
+        self.assertEqual((wins, noms, cult, true_story), ([], [], True, True))
 
-    def test_derive_nominee_and_festival(self):
-        wins, noms, fest, cult, _ = award_lists.derive(
-            "tt0071315", award_wins=[], award_noms=[], festival_keyword=None,
+    def test_derive_nominee(self):
+        wins, noms, cult, _ = award_lists.derive(
+            "tt0071315", award_wins=[], award_noms=[],
             keyword_cult=False, keyword_true_story=False)
         self.assertEqual(noms, ["Oscar Nominee"])
-        self.assertEqual(fest, "festival-cannes-winner")
 
     def test_listed_winner_gets_the_top_prize_label(self):
         self.assertEqual(festivals.festival_label(None, None, "tt0071315"), "Palme d'Or")
@@ -518,7 +576,8 @@ class WarmCycleBulkTests(unittest.IsolatedAsyncioTestCase):
     async def test_stale_titles_are_rated_in_bulk(self):
         calls = []
 
-        async def bulk(client, key, provider, mdb_type, ids, *, genre_ids=None):
+        async def bulk(client, key, provider, mdb_type, ids, *, genre_ids=None, on_request=None):
+            on_request()
             calls.append((provider, mdb_type, list(ids)))
             return {i: ({"imdb": 7.0}, "Drama", None, [], None) for i in ids}
 
@@ -550,6 +609,20 @@ class WarmCycleBulkTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stored, [])
         single.assert_not_called()
 
+    async def test_every_bulk_post_counts_and_partial_answers_are_kept(self):
+        async def bulk(client, key, provider, mdb_type, ids, *, genre_ids=None, on_request=None):
+            on_request()
+            on_request()                    # the IMDb re-ask under the other type
+            return {ids[0]: ({"imdb": 7.0}, "Drama", None, [], None),
+                    **{i: _RateLimited(5.0) for i in ids[1:]}}
+
+        single = mock.AsyncMock()
+        with self.assertLogs("main", level="INFO") as logs:
+            stored = await self._run(self._candidates(3), bulk, single)
+        self.assertEqual(len(stored), 1)
+        single.assert_not_called()
+        self.assertTrue(any("2 MDBList calls (2 bulk, 1 titles rated in bulk)" in m for m in logs.output))
+
     async def test_candidate_list_is_sized_by_the_tmdb_budget_alone(self):
         asked = []
 
@@ -560,6 +633,67 @@ class WarmCycleBulkTests(unittest.IsolatedAsyncioTestCase):
         await self._run([], mock.AsyncMock(), mock.AsyncMock(),
                         mdblist_budget=5000, trending=trending)
         self.assertEqual(asked, [400])   # 40% of the TMDB budget of 1000
+
+
+
+class RateLimitMarkTests(unittest.IsolatedAsyncioTestCase):
+    async def test_a_bulk_refusal_cools_the_key_without_a_title_backoff(self):
+        main._mdblist_key_cooldown.clear()
+        main._rating_backoff.clear()
+        self.addCleanup(main._mdblist_key_cooldown.clear)
+        self.addCleanup(main._rating_backoff.clear)
+        main._mark_mdblist_rate_limit(None, "k", _RateLimited(None, reset_at=time.time() + 600))
+        self.assertIn("k", main._mdblist_key_cooldown)
+        self.assertEqual(main._rating_backoff, {})
+
+
+class ReleaseDateMemoTests(unittest.TestCase):
+    def test_a_bulk_record_keeps_the_remembered_digital_date(self):
+        written = {}
+        with mock.patch.object(cache, "set_cached_tvdb_json",
+                               lambda key, value, ttl: written.update(value=value, ttl=ttl)), \
+             mock.patch.object(ratings, "mdblist_release_dates",
+                               lambda *a: {"released": "2026-09-01", "released_digital": "2026-10-01"}):
+            ratings.remember_mdblist_release_dates("tt1", "movie", {"released": "2026-09-01"})
+            self.assertEqual(written["value"]["released_digital"], "2026-10-01")
+            # The single call's record says there is none: that is believed.
+            ratings.remember_mdblist_release_dates(
+                "tt1", "movie", {"released": "2026-09-01", "released_digital": None})
+            self.assertIsNone(written["value"]["released_digital"])
+
+
+class MetadataTrueStoryTests(unittest.TestCase):
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        self._saved = (cache.DB_PATH, cache._initialised, getattr(cache._local, "conn", None))
+        cache.DB_PATH = os.path.join(self._dir.name, "cache.db")
+        cache._local.conn = None
+        cache.init_db()
+
+    def tearDown(self):
+        conn = getattr(cache._local, "conn", None)
+        if conn is not None:
+            conn.close()
+        cache.DB_PATH, cache._initialised, cache._local.conn = self._saved
+        self._dir.cleanup()
+
+    def _store(self, key, **kw):
+        cache.set_cached_tmdb_metadata(key, "T", "2020", [18], False, "/p.jpg", [],
+                                       vote_count=10, original_title="T", **kw)
+
+    def test_the_flag_rides_on_the_metadata_row(self):
+        self._store("movie_1_en", true_story=True)
+        self._store("movie_2_en")
+        self.assertTrue(cache.get_cached_tmdb_metadata("movie_1_en")["true_story"])
+        self.assertFalse(cache.get_cached_tmdb_metadata("movie_2_en")["true_story"])
+
+    def test_a_row_from_before_the_flag_refreshes_once(self):
+        self._store("movie_3_en", true_story=True)
+        with cache._db_lock:
+            cache.get_db().execute("UPDATE tmdb_metadata_cache SET true_story = NULL")
+            cache.get_db().commit()
+        with mock.patch.object(cache, "invalidate_final_posters"):
+            self.assertIsNone(cache.get_cached_tmdb_metadata("movie_3_en"))
 
 
 if __name__ == "__main__":

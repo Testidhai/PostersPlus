@@ -14,6 +14,8 @@
   endpoint is not documented: if it answers with an error or anything it
   can't read, bulk is turned off for an hour and ratings go back to one
   request per title. Rate limits are handled as before.
+  A bulk answer has no digital release date, so it never overwrites the one
+  an earlier single request remembered.
 - `CACHE_WARM_MDBLIST_BUDGET` counts requests, so a bulk request is one call
   however many titles it rates; the default of 500 now only bites when bulk is
   off. How many titles a cycle walks is set by `CACHE_WARM_TMDB_BUDGET` alone —
@@ -25,7 +27,9 @@
   bundled in `data/`. The cult list has about 2,600 films, where MDBList's
   keyword missed many obvious ones. Rebuild the lists with
   `tools/build_award_lists.py`. Based on a True Story comes from TMDB's
-  keywords, fetched in the details call already made. Metacritic Must-See
+  keywords, fetched in the details call already made and kept with the
+  title's TMDB metadata; metadata cached before this release is fetched again
+  once, the next time it is read, so the badge doesn't wait out the week. Metacritic Must-See
   is read off the score: 81 or more from at least 15 critics. A listed
   festival winner gets the top-prize label ("Palme d'Or") even when TMDB's
   id isn't on the older id lists.

@@ -461,6 +461,7 @@ def init_db() -> None:
         ("metadata_version",    "INTEGER"),
         ("alt_poster_path",     "TEXT"),
         ("poster_pools_json",   "TEXT"),
+        ("true_story",          "INTEGER"),
     ):
         _add_column_if_missing(conn, "tmdb_metadata_cache", col, definition)
 
@@ -1886,7 +1887,7 @@ def get_cached_tmdb_metadata(cache_key: str) -> dict | None:
                    poster_langs_json, imdb_id,
                    tmdb_release_date, last_air_date, next_episode_json,
                    last_episode_json, seasons_json, metadata_version,
-                   alt_poster_path, poster_pools_json
+                   alt_poster_path, poster_pools_json, true_story
             FROM tmdb_metadata_cache
             WHERE cache_key = ?
             """,
@@ -1906,7 +1907,7 @@ def get_cached_tmdb_metadata(cache_key: str) -> dict | None:
             poster_langs_json, imdb_id,
             tmdb_release_date, last_air_date, next_episode_json,
             last_episode_json, seasons_json, metadata_version,
-            alt_poster_path, poster_pools_json,
+            alt_poster_path, poster_pools_json, true_story,
         ) = row
 
         age_days = (time.time() - cached_at) / 86400
@@ -1981,7 +1982,9 @@ def get_cached_tmdb_metadata(cache_key: str) -> dict | None:
             and _tv_row
             and 10765 in json.loads(genre_ids_raw or "[]")
         )
-        if (vote_count is None or original_title is None
+        # true_story arrived with the bulk MDBList ratings, whose answer has
+        # no keywords to say it: a row from before refreshes once to learn it.
+        if (vote_count is None or original_title is None or true_story is None
                 or metadata_version not in (4, 5, 6)
                 or (_tv_row and metadata_version != 6)):
             logger.info(
@@ -2026,6 +2029,7 @@ def get_cached_tmdb_metadata(cache_key: str) -> dict | None:
             "last_episode":         json.loads(last_episode_json or "null"),
             "seasons":              json.loads(seasons_json or "[]"),
             "metadata_version":     metadata_version,
+            "true_story":           bool(true_story),
         }
     except Exception as exc:
         logger.error(f"TMDB metadata cache read error: {exc}")
@@ -2063,6 +2067,7 @@ def set_cached_tmdb_metadata(
     next_episode: dict | None = None,
     last_episode: dict | None = None,
     seasons: list[dict] | None = None,
+    true_story: bool = False,
     metadata_version: int = 6,
 ) -> None:
     try:
@@ -2080,8 +2085,8 @@ def set_cached_tmdb_metadata(
                      poster_langs_json, imdb_id,
                      tmdb_release_date, last_air_date, next_episode_json,
                      last_episode_json, seasons_json, metadata_version,
-                     alt_poster_path, poster_pools_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     alt_poster_path, poster_pools_json, true_story)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     cache_key,
@@ -2115,6 +2120,7 @@ def set_cached_tmdb_metadata(
                     metadata_version,
                     alt_poster_path,
                     json.dumps(poster_pools or {}),
+                    int(bool(true_story)),
                 ),
             )
             get_db().commit()

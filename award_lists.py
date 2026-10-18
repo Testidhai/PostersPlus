@@ -17,6 +17,7 @@ fallback until the keyword call is dropped.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -42,6 +43,7 @@ METACRITIC_MUST_SEE_REVIEWS = 15
 _cult: frozenset[str] | None = None
 _festival: dict[str, str] | None = None        # imdb id -> festival keyword
 _best_picture: dict[str, str] | None = None    # imdb id -> "win" | "nom"
+_version: str = ""                             # short hash of all three lists
 
 
 def _read(name: str):
@@ -56,7 +58,7 @@ def _read(name: str):
 
 
 def _load() -> None:
-    global _cult, _festival, _best_picture
+    global _cult, _festival, _best_picture, _version
     if _cult is not None:
         return
     cult = _read("cult_films.json") or {}
@@ -73,6 +75,9 @@ def _load() -> None:
     bp: dict[str, str] = {i: "nom" for i in best_picture.get("nominees") or []}
     bp.update({i: "win" for i in best_picture.get("winners") or []})
 
+    _version = hashlib.sha256(
+        json.dumps([sorted(cult), festivals, best_picture], sort_keys=True).encode()
+    ).hexdigest()[:8]
     _festival, _best_picture = fest, bp
     _cult = frozenset(cult)
 
@@ -102,9 +107,14 @@ def best_picture(imdb_id: str | None) -> str | None:
 
 def signature(imdb_id: str | None) -> str:
     """This title's list memberships, for the composite cache key: empty for a
-    title on no list, so most keys are unchanged by the lists existing."""
+    title on no list, so most keys are unchanged by the lists existing.
+
+    Without an IMDb id (a TMDB-id request, whose IMDb id is only known once its
+    metadata is read) the memberships can't be told yet, so the key carries
+    the lists' version instead: a list update re-renders every such poster."""
     if not imdb_id:
-        return ""
+        _load()
+        return f"|alv={_version}"
     parts = []
     if is_cult(imdb_id):
         parts.append("c")
@@ -130,17 +140,17 @@ def derive(
     *,
     award_wins: list[str],
     award_noms: list[str],
-    festival_keyword: str | None,
     keyword_cult: bool | None,
     keyword_true_story: bool | None,
     tmdb_true_story: bool | None = None,
-) -> tuple[list[str], list[str], str | None, bool, bool]:
+) -> tuple[list[str], list[str], bool, bool]:
     """Fold the lists into the flags a render read from the rating row.
 
-    Returns ``(award_wins, award_noms, festival_keyword, is_cult,
-    is_true_story)``.  A list hit adds its flag; a keyword flag the lists don't
-    confirm is kept as the fallback.  A Best Picture win on the list replaces a
-    keyword "Oscar Nominee"."""
+    Returns ``(award_wins, award_noms, is_cult, is_true_story)``.  A list hit
+    adds its flag; a keyword flag the lists don't confirm is kept as the
+    fallback.  A Best Picture win on the list replaces a keyword "Oscar
+    Nominee".  The festival list is read by festivals.festival_label, which
+    names a listed winner's top prize."""
     wins, noms = list(award_wins or []), list(award_noms or [])
     bp = best_picture(imdb_id)
     if bp == "win":
@@ -153,7 +163,6 @@ def derive(
     return (
         wins,
         noms,
-        festival_win(imdb_id) or festival_keyword,
         is_cult(imdb_id) or bool(keyword_cult),
         bool(tmdb_true_story) or bool(keyword_true_story),
     )
