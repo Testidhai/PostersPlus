@@ -177,8 +177,8 @@ Grouped as the admin dashboard groups them. Defaults apply when neither the dash
 | Variable | Default | Description |
 |---|---|---|
 | `CACHE_WARM_ENABLED` | `false` | Pre-populate the TMDB and MDBList caches for trending, popular and catalog titles in the background. Off by default; enable once the server keys' quotas are understood. `true` or `false`. |
-| `CACHE_WARM_TMDB_BUDGET` | `2000` | Ceiling on actual TMDB API calls per warm cycle; cache hits do not count. Only used when `CACHE_WARM_ENABLED` is `true`. |
-| `CACHE_WARM_MDBLIST_BUDGET` | `500` | Ceiling on actual MDBList calls per warm cycle. Only used when `CACHE_WARM_ENABLED` is `true`. |
+| `CACHE_WARM_TMDB_BUDGET` | `2000` | Ceiling on actual TMDB API calls per warm cycle; cache hits do not count. Also sets how many trending, popular and top-rated titles a cycle walks, so it decides how many titles the MDBList bulk requests can rate. Only used when `CACHE_WARM_ENABLED` is `true`. |
+| `CACHE_WARM_MDBLIST_BUDGET` | `500` | Ceiling on MDBList requests per warm cycle. Stale ratings are fetched in bulk, up to 200 titles to a request that counts once; only when bulk is unavailable does each title cost its own request. Only used when `CACHE_WARM_ENABLED` is `true`. |
 | `CACHE_WARM_MDBLIST_RESERVE` | `300` | MDBList's limit is a per-key daily quota (1,000/day on a free key) shared with live poster requests. The warmer stops spending a key once its remaining daily requests, reported by MDBList on every response, fall to this floor, so a cycle cannot leave the rest of the day without ratings. 0 disables the floor. Only used when `CACHE_WARM_ENABLED` is `true`. |
 | `CACHE_WARM_INTERVAL_HOURS` | `24` | Hours between the end of one warm cycle and the start of the next. Ignored after the first cycle once a warm hour is set. Only used when `CACHE_WARM_ENABLED` is `true`. |
 

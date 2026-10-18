@@ -725,6 +725,7 @@ def extract_discovery_meta(
     release_date: str | None = None,
     keywords: list[dict] | None = None,
     festival_keyword:         str | None  = None,
+    imdb_id:                  str | None  = None,
     is_cult_override:         bool | None = None,
     is_true_story_override:   bool | None = None,
     is_metacritic_override:   bool | None = None,
@@ -770,6 +771,7 @@ def extract_discovery_meta(
         festival_keyword if festival_keyword is not None
         else match_festival_keyword(keyword_names),
         tmdb_id if tmdb_id is not None else tmdb_data.get("id"),
+        imdb_id or tmdb_data.get("imdb_id"),
     )
 
     # --- Keyword-based discovery signals ---

@@ -166,7 +166,8 @@ PostersPlus is built on data and images from these services. None of them endors
 - **[fanart.tv](https://fanart.tv)**: posters, logos and backgrounds.
 - **[Trakt](https://trakt.tv)**, **[SIMKL](https://simkl.com)** and **[PublicMetaDB](https://publicmetadb.com)**: watchlists for the watchlist marker.
 - **[Arctic Shift](https://arctic-shift.photon-reddit.com)**: Reddit archive used to detect digital releases.
-- **[Wikidata](https://www.wikidata.org)**: festival award winners, under [CC0](https://creativecommons.org/publicdomain/zero/1.0/).
+- **[Wikidata](https://www.wikidata.org)**: festival award winners, and the IMDb ids the Wikipedia lists below are matched by, under [CC0](https://creativecommons.org/publicdomain/zero/1.0/).
+- **[Wikipedia](https://en.wikipedia.org)**: cult film, festival and Best Picture lists derived from Wikipedia ([List of cult films](https://en.wikipedia.org/wiki/List_of_cult_films), the Palme d'Or, Golden Lion, Golden Bear, Golden Leopard and Sundance Grand Jury Prize winners, and the Academy Award for Best Picture), under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). They ship in [data/](data) and are rebuilt with `tools/build_award_lists.py`.
 - **[RapidOCR](https://github.com/RapidAI/RapidOCR)**: the PP-OCRv5 text detection model from [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR), under the Apache License 2.0.
 - **Anime ID mapping**: from [Fribb/anime-lists](https://github.com/Fribb/anime-lists), which is built from [anime-offline-database](https://github.com/cedya77/anime-offline-database) (a continuation of [manami-project](https://github.com/manami-project)'s original) and [Anime-Lists/anime-lists](https://github.com/Anime-Lists/anime-lists). anime-offline-database is made available under the [Open Database License v1.0](https://opendatacommons.org/licenses/odbl/1-0/), and its contents under the [Database Contents License v1.0](https://opendatacommons.org/licenses/dbcl/1-0/).
 

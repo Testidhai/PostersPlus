@@ -547,6 +547,61 @@ async def _tv_is_horror(
     return any((n or "").strip().lower() == "horror" for n in names or ())
 
 
+# Whether TMDB tags a title "based on true story", by type and TMDB id.  The
+# keyword comes in the details call fetch_poster_metadata already makes, and
+# replaces MDBList's based-on-true-story keyword (which the bulk ratings call
+# does not carry).  Kept in the generic JSON cache rather than as a metadata
+# column: the metadata row is rewritten only on a miss, and every details call
+# rewrites this, so the long TTL only covers titles not refetched since.
+_TRUE_STORY_KEYWORD_IDS = frozenset({9672})       # "based on true story"
+_TRUE_STORY_KEYWORD_NAMES = frozenset({"based on true story", "based on a true story"})
+_TRUE_STORY_TTL = 90 * 86400
+
+
+def _true_story_key(endpoint: str, tmdb_id) -> str:
+    return f"tmdb_true_story:{endpoint}:{tmdb_id}"
+
+
+def tmdb_keywords_true_story(data: dict) -> bool | None:
+    """From a details answer with keywords appended: whether the title is based
+    on a true story, or None when the answer carried no keyword block."""
+    block = data.get("keywords")
+    if not isinstance(block, dict):
+        return None
+    # Films list them under "keywords", TV under "results".
+    items = block.get("keywords") if "keywords" in block else block.get("results")
+    return any(
+        k.get("id") in _TRUE_STORY_KEYWORD_IDS
+        or str(k.get("name") or "").strip().lower() in _TRUE_STORY_KEYWORD_NAMES
+        for k in items or [] if isinstance(k, dict)
+    )
+
+
+def remember_tmdb_true_story(endpoint: str, tmdb_id, data: dict) -> None:
+    from cache import set_cached_tvdb_json
+    flag = tmdb_keywords_true_story(data)
+    if flag is None or not tmdb_id:
+        return
+    try:
+        set_cached_tvdb_json(_true_story_key(endpoint, tmdb_id), {"true_story": flag}, _TRUE_STORY_TTL)
+    except Exception as exc:   # a cache hiccup must not cost the metadata
+        logger.warning(f"Could not cache TMDB true-story flag for {endpoint} {tmdb_id}: {exc}")
+
+
+def tmdb_true_story(media_type: str, tmdb_id) -> bool | None:
+    """TMDB's word on whether a title is based on a true story, or None when no
+    details answer for it has been seen since keywords were requested."""
+    if not tmdb_id:
+        return None
+    from cache import get_cached_tvdb_json
+    endpoint = "tv" if media_type in ("tv", "series") else "movie"
+    try:
+        row = get_cached_tvdb_json(_true_story_key(endpoint, tmdb_id))
+    except Exception:
+        return None
+    return bool(row["true_story"]) if row and "true_story" in row else None
+
+
 async def fetch_poster_metadata(
     client: httpx.AsyncClient,
     tmdb_id: str,
@@ -626,9 +681,9 @@ async def fetch_poster_metadata(
         params={
             "api_key": tmdb_key,
             # Keywords settle TV's merged Sci-Fi & Fantasy genre (see
-            # _split_tv_scifi_fantasy); films have the two apart already.
-            "append_to_response": "images,credits,external_ids"
-                                  + (",keywords" if endpoint == "tv" else ""),
+            # _split_tv_scifi_fantasy), and for both types say whether the
+            # title is based on a true story (remember_tmdb_true_story).
+            "append_to_response": "images,credits,external_ids,keywords",
             "include_image_language": _img_langs,
         },
     )
@@ -715,6 +770,7 @@ async def fetch_poster_metadata(
 
     genre_ids            = [g["id"] for g in data.get("genres", [])]
     _genres_unsettled    = False
+    await asyncio.to_thread(remember_tmdb_true_story, endpoint, tmdb_id, data)
     if endpoint == "tv":
         # TV keywords sit under "results" (films use "keywords").
         _kw = [k.get("name") or "" for k in (data.get("keywords") or {}).get("results", [])]

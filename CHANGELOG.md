@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### MDBList ratings in bulk
+
+- Ratings are fetched up to 200 titles to a request. The cache warmer
+  collects every stale title as it walks the candidate list and rates them
+  in a handful of bulk requests instead of one request each, so a cycle of
+  1,000 stale titles costs 5 requests instead of 1,000. Live renders that
+  miss the rating cache within 100 ms of each other (a catalog page asking
+  for its posters) share one request too. A client's own `mdblist_key` is
+  only ever batched with requests made on that same key. MDBList's bulk
+  endpoint is not documented: if it answers with an error or anything it
+  can't read, bulk is turned off for an hour and ratings go back to one
+  request per title. Rate limits are handled as before.
+- `CACHE_WARM_MDBLIST_BUDGET` counts requests, so a bulk request is one call
+  however many titles it rates; the default of 500 now only bites when bulk is
+  off. How many titles a cycle walks is set by `CACHE_WARM_TMDB_BUDGET` alone —
+  an MDBList budget above the TMDB one no longer lengthens the candidate list.
+- The bulk answer has no keywords, so the badges that came from them no
+  longer depend on them. Cult Classic, the festival top prizes (Cannes,
+  Venice, Berlin, Locarno, Sundance) and Oscar Winner / Nominee come from
+  lists derived from Wikipedia (CC BY-SA 4.0), matched by IMDb id and
+  bundled in `data/`. The cult list has about 2,600 films, where MDBList's
+  keyword missed many obvious ones. Rebuild the lists with
+  `tools/build_award_lists.py`. Based on a True Story comes from TMDB's
+  keywords, fetched in the details call already made. Metacritic Must-See
+  is read off the score: 81 or more from at least 15 critics. A listed
+  festival winner gets the top-prize label ("Palme d'Or") even when TMDB's
+  id isn't on the older id lists.
+- These flags are worked out when the poster is drawn rather than stored
+  with the rating, so a list update reaches every title at once, and only
+  posters whose list membership changed are re-rendered. The keyword flags
+  still count as a fallback for this release.
+
 ### Reword sash labels from the dashboard
 
 - The admin dashboard has a **Sash labels** view: pick a poster language

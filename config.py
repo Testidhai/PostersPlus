@@ -574,8 +574,8 @@ IMDB_DATASET_MIN_VOTES       = max(0, int(_env('IMDB_DATASET_MIN_VOTES', "10", g
 # count), so steady-state runs after the first one are typically far cheaper
 # than the configured budgets.
 CACHE_WARM_ENABLED           = _env('CACHE_WARM_ENABLED', "false", group='Cache warming', kind='bool', label='Cache warming', help="Pre-populate the TMDB and MDBList caches for trending, popular and catalog titles in the background. Off by default; enable once the server keys' quotas are understood.").strip().lower() == "true"
-CACHE_WARM_TMDB_BUDGET       = int(_env('CACHE_WARM_TMDB_BUDGET', "2000", group='Cache warming', show_if=('CACHE_WARM_ENABLED', 'true'), kind='int', label='TMDB budget per cycle', help='Ceiling on actual TMDB API calls per warm cycle; cache hits do not count.', min=0, max=100000))
-CACHE_WARM_MDBLIST_BUDGET    = int(_env('CACHE_WARM_MDBLIST_BUDGET', "500", group='Cache warming', show_if=('CACHE_WARM_ENABLED', 'true'), kind='int', label='MDBList budget per cycle', help='Ceiling on actual MDBList calls per warm cycle.', min=0, max=100000))
+CACHE_WARM_TMDB_BUDGET       = int(_env('CACHE_WARM_TMDB_BUDGET', "2000", group='Cache warming', show_if=('CACHE_WARM_ENABLED', 'true'), kind='int', label='TMDB budget per cycle', help='Ceiling on actual TMDB API calls per warm cycle; cache hits do not count. Also sets how many trending, popular and top-rated titles a cycle walks, so it decides how many titles the MDBList bulk requests can rate.', min=0, max=100000))
+CACHE_WARM_MDBLIST_BUDGET    = int(_env('CACHE_WARM_MDBLIST_BUDGET', "500", group='Cache warming', show_if=('CACHE_WARM_ENABLED', 'true'), kind='int', label='MDBList budget per cycle', help='Ceiling on MDBList requests per warm cycle. Stale ratings are fetched in bulk, up to 200 titles to a request that counts once; only when bulk is unavailable does each title cost its own request.', min=0, max=100000))
 # MDBList's limit is a per-key daily quota (1000/day free) shared with live
 # poster requests, and every response reports what's left. The warmer stops
 # spending a key once its remaining daily requests fall to this floor, so a

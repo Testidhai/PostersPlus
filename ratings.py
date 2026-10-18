@@ -257,6 +257,94 @@ def mdblist_tv_horror(tmdb_id) -> bool | None:
     return bool(row["horror"]) if row and "horror" in row else None
 
 
+def _rate_limited(resp, quota, label: str) -> _RateLimited:
+    """A 429 / 503 answer as _RateLimited.
+
+    429 is either the daily quota or the per-IP burst limit; 503 is how the
+    burst limit first shows itself (a run of 503s, then 429 + Retry-After for
+    every key on the address). Both go back as _RateLimited so the caller
+    pauses instead of walking the network-failure ladder.
+    """
+    retry_after: float | None = None
+    raw = resp.headers.get("retry-after")
+    if raw:
+        try:
+            # Most APIs send Retry-After as an integer seconds value.
+            # HTTP-date format also exists but is uncommon for JSON APIs;
+            # we don't try to parse it — caller will fall back to default.
+            parsed = float(raw)
+            if parsed > 0:
+                retry_after = parsed
+        except ValueError:
+            pass
+    # Only treat the 429 as quota exhaustion when MDBList says the key is
+    # actually empty; a 429 with requests still remaining (or none of the
+    # quota headers at all) is the burst throttle, and parking the key
+    # until midnight for it would be wrong.
+    reset_at = None
+    if (
+        resp.status_code == 429
+        and quota and quota.reset_at
+        and (quota.remaining is None or quota.remaining <= 0)
+    ):
+        reset_at = quota.reset_at
+    logger.warning(
+        f"MDblist {'rate-limited' if resp.status_code == 429 else 'refused (503)'} "
+        f"for {label} (retry-after={retry_after}, quota={quota})"
+    )
+    return _RateLimited(retry_after, reset_at=reset_at)
+
+
+def _metacritic_must_see(data: dict) -> bool:
+    import award_lists
+    for r in data.get("ratings") or []:
+        if (r.get("source") or "").lower() == "metacritic":
+            return award_lists.metacritic_must_see(r.get("value"), _rating_vote_count(r))
+    return False
+
+
+def _parse_mdblist_title(data: dict, media_id: str, media_type: str, genre: str):
+    """One MDBList title record as ``(ratings_dict, genre, release_date,
+    keywords, age_rating)``.  The single and the bulk call share it; the bulk
+    record has no ``keywords`` and no ``released_digital``."""
+    release_date = data.get("released")
+    keywords: list[dict] = list(data.get("keywords") or [])
+    # Metacritic Must-See is read off the score rather than the keyword, which
+    # the bulk answer lacks; it rides in as the keyword the flag code reads.
+    if _metacritic_must_see(data) and not any(
+        (kw.get("name") or "").lower().strip() == "metacritic-must-see" for kw in keywords
+    ):
+        keywords.append({"name": "metacritic-must-see"})
+    remember_mdblist_release_dates(media_id, media_type, data)
+    remember_mdblist_tv_horror(data)
+
+    age_rating: int | None = data.get("age_rating") or None
+    if age_rating is not None:
+        try:
+            age_rating = int(age_rating)
+        except (ValueError, TypeError):
+            age_rating = None
+
+    ratings_dict: dict[str, float] = {}
+    for r in data.get("ratings") or []:
+        source = (r.get("source") or "").lower()
+        value  = r.get("value")
+        if source not in SCORE_NORMALISERS or value is None:
+            continue
+
+        vote_count = _rating_vote_count(r)
+        if source != "rogerebert" and vote_count is not None and vote_count < RATING_MIN_VOTES:
+            logger.info(
+                f"Skipping {source} rating for {media_id}: "
+                f"vote_count={vote_count} < {RATING_MIN_VOTES}"
+            )
+            continue
+
+        ratings_dict[source] = value
+
+    return ratings_dict, genre, release_date, keywords, age_rating
+
+
 async def fetch_rating(
     client: httpx.AsyncClient,
     mdblist_key: str,
@@ -315,39 +403,8 @@ async def fetch_rating(
     if resp.status_code == 200:
         media_type = "tv" if mdb_type == "show" else "movie"
 
-    # 429 is either the daily quota or the per-IP burst limit; 503 is how the
-    # burst limit first shows itself (a run of 503s, then 429 + Retry-After
-    # for every key on the address). Both go back as _RateLimited so the
-    # caller pauses instead of walking the network-failure ladder.
     if resp.status_code in (429, 503):
-        retry_after: float | None = None
-        raw = resp.headers.get("retry-after")
-        if raw:
-            try:
-                # Most APIs send Retry-After as an integer seconds value.
-                # HTTP-date format also exists but is uncommon for JSON APIs;
-                # we don't try to parse it — caller will fall back to default.
-                parsed = float(raw)
-                if parsed > 0:
-                    retry_after = parsed
-            except ValueError:
-                pass
-        # Only treat the 429 as quota exhaustion when MDBList says the key is
-        # actually empty; a 429 with requests still remaining (or none of the
-        # quota headers at all) is the burst throttle, and parking the key
-        # until midnight for it would be wrong.
-        reset_at = None
-        if (
-            resp.status_code == 429
-            and quota and quota.reset_at
-            and (quota.remaining is None or quota.remaining <= 0)
-        ):
-            reset_at = quota.reset_at
-        logger.warning(
-            f"MDblist {'rate-limited' if resp.status_code == 429 else 'refused (503)'} "
-            f"for {media_id} (retry-after={retry_after}, quota={quota})"
-        )
-        return _RateLimited(retry_after, reset_at=reset_at)
+        return _rate_limited(resp, quota, media_id)
 
     if resp.status_code == 404:
         logger.info(f"MDblist 404 for {provider}/{media_id} — title not found, returning empty result")
@@ -357,37 +414,144 @@ async def fetch_rating(
         logger.warning(f"MDblist error {resp.status_code} for {provider}/{media_id}")
         return FETCH_FAILED
 
-    data         = resp.json()
-    release_date = data.get("released")
-    keywords: list[dict] = data.get("keywords") or []
-    remember_mdblist_release_dates(media_id, media_type, data)
-    remember_mdblist_tv_horror(data)
+    return _parse_mdblist_title(resp.json(), media_id, media_type, genre)
 
-    age_rating: int | None = data.get("age_rating") or None
-    if age_rating is not None:
-        try:
-            age_rating = int(age_rating)
-        except (ValueError, TypeError):
-            age_rating = None
 
-    ratings_dict: dict[str, float] = {}
-    for r in data.get("ratings", []):
-        source = (r.get("source") or "").lower()
-        value  = r.get("value")
-        if source not in SCORE_NORMALISERS or value is None:
+# ---------------------------------------------------------------------------
+# Bulk fetch
+# ---------------------------------------------------------------------------
+# MDBList also answers ``POST /{provider}/{type}`` with ``{"ids": [...]}``: up
+# to 200 titles for one request, about as fast as one title.  The answer is a
+# plain list of title records, in no particular order, with every id MDBList
+# doesn't file under that type left out.  Each record is the single call's
+# record minus ``keywords`` (even when asked for), ``released_digital`` and the
+# episode fields — which is why the cult, festival, Oscar and Metacritic flags
+# no longer depend on keywords (award_lists.py).
+#
+# The endpoint is not documented anywhere we've read, so it is treated as
+# unofficial: an answer it can't make sense of turns bulk off for an hour and
+# the caller falls back to single calls.
+
+MDBLIST_BULK_MAX_IDS = 200
+_BULK_DISABLE_SECS = 3600
+_bulk_disabled_until = 0.0
+
+
+def mdblist_bulk_available(now: float | None = None) -> bool:
+    return (time.time() if now is None else now) >= _bulk_disabled_until
+
+
+def _disable_bulk(reason: str) -> None:
+    global _bulk_disabled_until
+    _bulk_disabled_until = time.time() + _BULK_DISABLE_SECS
+    logger.warning(f"MDBList bulk ratings disabled for {_BULK_DISABLE_SECS // 60} min: {reason}")
+
+
+def _record_id(data: dict, provider: str) -> str | None:
+    value = (data.get("ids") or {}).get(provider)
+    return str(value) if value not in (None, "") else None
+
+
+async def _bulk_post(client, mdblist_key: str, provider: str, mdb_type: str, ids: list[str]):
+    """One bulk request: ``{id: record}``, _RateLimited, FETCH_FAILED on a
+    network error, or None on an answer that turns bulk off."""
+    logger.info(
+        f"External API Call: Requested bulk ratings from MDBlist for "
+        f"{len(ids)} {provider}/{mdb_type} ids"
+    )
+    try:
+        resp = await client.post(
+            f"https://api.mdblist.com/{provider}/{mdb_type}",
+            params={"apikey": mdblist_key},
+            json={"ids": ids},
+            timeout=30.0,
+        )
+    except Exception as exc:
+        logger.error(f"MDblist bulk request error: {type(exc).__name__}: {exc}")
+        return FETCH_FAILED
+    quota = _record_mdblist_quota(mdblist_key, resp.headers)
+    if resp.status_code in (429, 503):
+        return _rate_limited(resp, quota, f"bulk {provider}/{mdb_type} ({len(ids)} ids)")
+    if resp.status_code != 200:
+        _disable_bulk(f"HTTP {resp.status_code} for {provider}/{mdb_type}")
+        return None
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+    if not isinstance(body, list):
+        _disable_bulk(f"unexpected answer shape ({type(body).__name__}) for {provider}/{mdb_type}")
+        return None
+    wanted = set(ids)
+    out: dict[str, dict] = {}
+    for record in body:
+        if not isinstance(record, dict):
             continue
+        rid = _record_id(record, provider)
+        if rid in wanted:
+            out[rid] = record
+    return out
 
-        vote_count = _rating_vote_count(r)
-        if source != "rogerebert" and vote_count is not None and vote_count < RATING_MIN_VOTES:
-            logger.info(
-                f"Skipping {source} rating for {media_id}: "
-                f"vote_count={vote_count} < {RATING_MIN_VOTES}"
-            )
-            continue
 
-        ratings_dict[source] = value
+async def fetch_ratings_bulk(
+    client: httpx.AsyncClient,
+    mdblist_key: str,
+    provider: str,
+    mdb_type: str,
+    ids: list[str],
+    *,
+    genre_ids: dict[str, list[int]] | None = None,
+) -> "dict[str, tuple] | _FetchFailed | _RateLimited":
+    """Ratings for many titles of one type at once.
 
-    return ratings_dict, genre, release_date, keywords, age_rating
+    Returns ``{id: (ratings_dict, genre, release_date, keywords, age_rating)}``
+    — fetch_rating's answer, per title — for every id in *ids*.  An id MDBList
+    doesn't know comes back as fetch_rating's 404 answer; an IMDb id is first
+    asked again under the other type, as fetch_rating does.  *genre_ids* maps
+    an id to its TMDB genre ids, for the genre label.
+
+    Returns _RateLimited on 429 / 503, and FETCH_FAILED on a network error or
+    when bulk is (or just got) disabled — the caller then makes single calls.
+    """
+    ids = [str(i) for i in dict.fromkeys(ids) if i]
+    if not ids:
+        return {}
+    if not mdblist_bulk_available():
+        return FETCH_FAILED
+    genre_ids = genre_ids or {}
+
+    records: dict[str, tuple[dict, str]] = {}   # id -> (record, media type it answered as)
+
+    async def _ask(type_: str, wanted: list[str]):
+        answered_as = "tv" if type_ == "show" else "movie"
+        for i in range(0, len(wanted), MDBLIST_BULK_MAX_IDS):
+            got = await _bulk_post(client, mdblist_key, provider, type_, wanted[i:i + MDBLIST_BULK_MAX_IDS])
+            if got is None:
+                return FETCH_FAILED
+            if isinstance(got, _RateLimited) or got is FETCH_FAILED:
+                return got
+            records.update({k: (v, answered_as) for k, v in got.items()})
+        return None
+
+    failed = await _ask(mdb_type, ids)
+    if failed is not None:
+        return failed
+    missing = [i for i in ids if i not in records]
+    if missing and provider == "imdb":
+        failed = await _ask("movie" if mdb_type == "show" else "show", missing)
+        if failed is not None:
+            return failed
+
+    out: dict[str, tuple] = {}
+    for media_id in ids:
+        genre = genre_label(genre_ids.get(media_id) or [], GENRE_PRIORITY)
+        if media_id in records:
+            record, answered_as = records[media_id]
+            out[media_id] = _parse_mdblist_title(record, media_id, answered_as, genre)
+        else:
+            logger.info(f"MDblist bulk: {provider}/{media_id} not found — returning empty result")
+            out[media_id] = ({}, genre, None, [], None)
+    return out
 
 
 # ---------------------------------------------------------------------------

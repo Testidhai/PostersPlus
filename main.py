@@ -653,6 +653,18 @@ async def _mdblist_wait_for_slot() -> None:
         return
 
 
+@asynccontextmanager
+async def _mdblist_outbound():
+    """Held around one outbound MDBList request: the concurrency cap, then pacing."""
+    global _mdblist_semaphore
+    if _mdblist_semaphore is None:
+        _mdblist_semaphore = asyncio.Semaphore(_cfg.MDBLIST_CONCURRENCY)
+    async with _mdblist_semaphore:
+        await _mdblist_wait_for_slot()
+        yield
+
+
+
 def _quality_backoff_remaining(now: float | None = None) -> float:
     if now is None:
         now = asyncio.get_running_loop().time()
@@ -960,7 +972,10 @@ from ratings import (
     draw_frosted_bar,
     draw_score_bar,
     fetch_rating,
+    fetch_ratings_bulk,
     is_anime_rated,
+    mdblist_bulk_available,
+    MDBLIST_BULK_MAX_IDS,
     mdblist_quota_remaining,
     mdblist_release_dates,
     mdblist_tv_horror,
@@ -977,10 +992,24 @@ from tmdb import composite_logo, logo_centre_y, fetch_logo, image_language_order
 # the same as that list's retry cooldown.
 from tmdb import _TRENDING_SOURCE_RETRY_SECS as _TRENDING_UNREAD_TTL
 from tmdb import trending_source_signature
+from tmdb import tmdb_true_story
 
 import tvdb
 import anime
 import art_overrides
+import award_lists
+from mdblist_batch import RatingBatcher
+
+# Live renders that miss the rating cache within 100 ms of each other, on the
+# same route, type and key, share one bulk request (mdblist_batch.py).
+_mdblist_batcher = RatingBatcher(
+    single=lambda *a, **kw: fetch_rating(*a, **kw),
+    bulk=lambda *a, **kw: fetch_ratings_bulk(*a, **kw),
+    bulk_available=lambda: mdblist_bulk_available(),
+    gate=_mdblist_outbound,
+    window=0.1,
+    max_ids=MDBLIST_BULK_MAX_IDS,
+)
 import reports
 import presets
 import custom_fonts
@@ -6417,11 +6446,12 @@ async def _run_cache_warm_cycle(client: httpx.AsyncClient) -> None:
     Single pass over a ranked, deduped candidate list (catalog, then
     trending, then popular, then supplemental — top rated / now playing /
     on the air): walks until the TMDB metadata budget is spent or the
-    candidate list is exhausted. MDBList lookups are interleaved for as long
-    as the MDBList budget allows, then the loop continues warming TMDB-only
-    for the remainder. Both budgets only count actual cache-miss
-    metadata/rating API calls — entries already warm (including images and
-    logos) cost nothing.
+    candidate list is exhausted. Titles whose MDBList rating is stale are
+    collected on the way and fetched after the walk, in bulk (200 to a
+    request, grouped by id route and type), falling back to one call per
+    title when bulk is unavailable, for as long as the MDBList budget allows.
+    Both budgets only count actual cache-miss metadata/rating API calls —
+    entries already warm (including images and logos) cost nothing.
 
     If CACHE_WARM_QUALITY_ENABLED is set, also pre-fetches quality badge
     data (resolution/source/HDR tokens) for every processed candidate via
@@ -6451,8 +6481,10 @@ async def _run_cache_warm_cycle(client: httpx.AsyncClient) -> None:
     # three so warming covers "what's hot right now", "what people steadily
     # watch", and "what's airing/acclaimed". Each source is independently
     # ranked/deduped; the combined list is deduped again here so a title
-    # appearing in multiple sources only costs one slot.
-    target_total  = max(tmdb_budget, mdblist_budget) or tmdb_budget
+    # appearing in multiple sources only costs one slot. The list is sized by
+    # the TMDB budget alone: an MDBList call is a bulk request for up to 200
+    # titles, so the MDBList budget says nothing about how many titles to walk.
+    target_total  = tmdb_budget
     trending_target    = (target_total * 4 + 9) // 10  # ~40%
     popular_target     = (target_total * 3 + 9) // 10  # ~30%
     supplemental_target = target_total - trending_target - popular_target  # ~30%
@@ -6491,6 +6523,10 @@ async def _run_cache_warm_cycle(client: httpx.AsyncClient) -> None:
 
     tmdb_calls      = 0
     mdblist_calls   = 0
+    # Titles whose rating is stale, fetched in bulk once the walk is done.
+    pending_ratings: list[dict] = []
+    mdblist_bulk_requests = 0
+    mdblist_bulk_titles   = 0
     quality_calls   = 0
     # Burst 429/503s the warmer has run into this cycle. The next fetch sleeps
     # through the pause, so one is just a delay; a run of them means the
@@ -6661,112 +6697,172 @@ async def _run_cache_warm_cycle(client: httpx.AsyncClient) -> None:
                         _record_quality_result(FETCH_FAILED)
                         logger.warning(f"Cache warm: quality fetch failed for {imdb_id}: {exc}")
 
-        if mdblist_calls >= mdblist_budget:
+        if mdblist_budget <= 0:
             continue
 
         # Warm under exactly the identity /poster reads, or the row is written
         # where nothing looks for it. A title TMDB has no IMDb link for is warmed
         # through the TMDB route rather than skipped.
         warm_canonical_id = _canonical_rating_id(imdb_id or "", "", tmdb_id)
-        warm_provider     = "imdb" if imdb_id else "tmdb"
-        warm_media_id     = imdb_id or tmdb_id
-
         if get_cached_rating(warm_canonical_id) is not None:
             continue  # rating already fresh — nothing to do
 
-        # The quota is per day, not per second, and the warmer shares it with
-        # real requests. Stop spending a key before it is drained so the rest
-        # of the day still renders ratings — on a free key (1000/day) the
-        # default budget alone would otherwise take half the quota in one
-        # cycle. A key live traffic has already put on cooldown is skipped the
-        # same way. When a sibling key still has room, warming moves to it.
-        _warm_now = asyncio.get_running_loop().time()
-        _warm_key = _warm_mdblist_key_with_quota(
-            effective_mdblist_key, _warm_now, _cfg.CACHE_WARM_MDBLIST_RESERVE
-        )
-        if _warm_key is None:
-            logger.info(
-                f"Cache warm: no MDBList key with quota above the reserve "
-                f"({_cfg.CACHE_WARM_MDBLIST_RESERVE}) or off cooldown — "
-                f"stopping MDBList warming for this cycle after {mdblist_calls} calls"
-            )
-            mdblist_budget = mdblist_calls
-            continue
-        if _warm_key != effective_mdblist_key:
-            logger.info(
-                f"Cache warm: MDBList {_mdblist_server_key_label(effective_mdblist_key)} at its "
-                f"quota reserve or cooling down — warming continues on "
-                f"{_mdblist_server_key_label(_warm_key)}"
-            )
-            effective_mdblist_key = _warm_key
+        # Collected now, fetched after the walk: in bulk, 200 titles to the
+        # request, grouped by route and type.
+        pending_ratings.append({
+            "canonical_id": warm_canonical_id,
+            "provider":     "imdb" if imdb_id else "tmdb",
+            "media_id":     str(imdb_id or tmdb_id),
+            "mdb_type":     "show" if media_type in ("tv", "series") else "movie",
+            "media_type":   media_type,
+            "tmdb_id":      tmdb_id,
+            "genre_ids":    genre_ids,
+        })
 
-        await asyncio.sleep(0.25)
-
-        async def _fetch_rating_warm(_key: str):
-            async with _mdblist_semaphore:
-                await _mdblist_wait_for_slot()
-                return await fetch_rating(
-                    client, _key, genre_ids, media_type,
-                    media_id=warm_media_id, provider=warm_provider,
-                )
-
-        result = await _fetch_rating_warm(effective_mdblist_key)
-        mdblist_calls += 1
-
-        if isinstance(result, _RateLimited):
-            backoff_secs, replacement = _mark_mdblist_rate_limit(warm_canonical_id, effective_mdblist_key, result)
-            if not result.quota_exhausted:
-                burst_pauses += 1
-                logger.warning(
-                    f"Cache warm: MDBList burst limit hit on {warm_canonical_id}; "
-                    f"pausing MDBList calls for {backoff_secs:.0f}s"
-                )
-                if burst_pauses >= _CACHE_WARM_MAX_BURST_PAUSES:
-                    logger.warning(
-                        f"Cache warm: MDBList burst limit hit {burst_pauses} times this cycle "
-                        "— stopping MDBList warming for this cycle"
-                    )
-                    mdblist_budget = mdblist_calls
-                continue  # title stays uncached; the next fetch waits out the pause
-            logger.warning(
-                f"Cache warm: MDBList rate-limited on {warm_canonical_id}; "
-                f"key cooling down for {backoff_secs:.0f}s"
-            )
-            if replacement:
-                effective_mdblist_key = replacement
-            else:
-                logger.info("Cache warm: no healthy MDBList key remains — stopping MDBList warming for this cycle")
-                mdblist_budget = mdblist_calls  # stop further MDBList attempts
-            continue
-
-        if result is FETCH_FAILED:
-            logger.warning(f"Cache warm: MDBList fetch failed for {warm_canonical_id} — stopping MDBList warming for this cycle")
-            mdblist_budget = mdblist_calls  # stop further MDBList attempts
-            continue
-
+    async def _store_warm_rating(item: dict, result) -> None:
         ratings_dict, genre, rel, keywords, age_rating = result
-        award_wins, award_noms = parse_mdblist_awards(keywords, tmdb_id=tmdb_id, media_type=media_type)
+        award_wins, award_noms = parse_mdblist_awards(
+            keywords, tmdb_id=item["tmdb_id"], media_type=item["media_type"])
         kw_names = {(kw.get("name") or "").lower().strip() for kw in keywords}
-        festival_keyword = match_festival_keyword(kw_names)
-        is_cult       = bool({"cult-classic", "cult-film"} & kw_names)
-        is_true_story = "based-on-true-story" in kw_names
-        is_metacritic = "metacritic-must-see" in kw_names
-
         await _db_call(
             set_cached_rating,
-            warm_canonical_id,
+            item["canonical_id"],
             ratings_dict if isinstance(ratings_dict, dict) else {},
             genre or "Unknown",
             rel,
             award_wins,
             award_noms,
             awards_fetched=True,
-            festival_keyword=festival_keyword,
+            festival_keyword=match_festival_keyword(kw_names),
             age_rating=age_rating,
-            is_cult=is_cult,
-            is_true_story=is_true_story,
-            is_metacritic=is_metacritic,
+            is_cult=bool({"cult-classic", "cult-film"} & kw_names),
+            is_true_story="based-on-true-story" in kw_names,
+            is_metacritic="metacritic-must-see" in kw_names,
         )
+
+    def _warm_key() -> str | None:
+        """The key the next warm request may spend, or None to stop warming.
+
+        The quota is per day, not per second, and the warmer shares it with
+        real requests. Stop spending a key before it is drained so the rest
+        of the day still renders ratings. A key live traffic has already put
+        on cooldown is skipped the same way. When a sibling key still has
+        room, warming moves to it."""
+        nonlocal effective_mdblist_key, mdblist_budget
+        _warm_now = asyncio.get_running_loop().time()
+        _key = _warm_mdblist_key_with_quota(
+            effective_mdblist_key, _warm_now, _cfg.CACHE_WARM_MDBLIST_RESERVE
+        )
+        if _key is None:
+            logger.info(
+                f"Cache warm: no MDBList key with quota above the reserve "
+                f"({_cfg.CACHE_WARM_MDBLIST_RESERVE}) or off cooldown — "
+                f"stopping MDBList warming for this cycle after {mdblist_calls} calls"
+            )
+            mdblist_budget = mdblist_calls
+            return None
+        if _key != effective_mdblist_key:
+            logger.info(
+                f"Cache warm: MDBList {_mdblist_server_key_label(effective_mdblist_key)} at its "
+                f"quota reserve or cooling down — warming continues on "
+                f"{_mdblist_server_key_label(_key)}"
+            )
+            effective_mdblist_key = _key
+        return _key
+
+    def _on_rate_limited(label: str, key: str, result) -> None:
+        nonlocal burst_pauses, mdblist_budget, effective_mdblist_key
+        backoff_secs, replacement = _mark_mdblist_rate_limit(label, key, result)
+        if not result.quota_exhausted:
+            burst_pauses += 1
+            logger.warning(
+                f"Cache warm: MDBList burst limit hit on {label}; "
+                f"pausing MDBList calls for {backoff_secs:.0f}s"
+            )
+            if burst_pauses >= _CACHE_WARM_MAX_BURST_PAUSES:
+                logger.warning(
+                    f"Cache warm: MDBList burst limit hit {burst_pauses} times this cycle "
+                    "— stopping MDBList warming for this cycle"
+                )
+                mdblist_budget = mdblist_calls
+            return  # titles stay uncached; the next fetch waits out the pause
+        logger.warning(
+            f"Cache warm: MDBList rate-limited on {label}; "
+            f"key cooling down for {backoff_secs:.0f}s"
+        )
+        if replacement:
+            effective_mdblist_key = replacement
+        else:
+            logger.info("Cache warm: no healthy MDBList key remains — stopping MDBList warming for this cycle")
+            mdblist_budget = mdblist_calls  # stop further MDBList attempts
+
+    async def _warm_single(item: dict) -> None:
+        """One title by the single call — bulk's fall-back."""
+        nonlocal mdblist_calls, mdblist_budget
+        _key = _warm_key()
+        if _key is None:
+            return
+        await asyncio.sleep(0.25)
+        async with _mdblist_semaphore:
+            await _mdblist_wait_for_slot()
+            result = await fetch_rating(
+                client, _key, item["genre_ids"], item["media_type"],
+                media_id=item["media_id"], provider=item["provider"],
+            )
+        mdblist_calls += 1
+        if isinstance(result, _RateLimited):
+            _on_rate_limited(item["canonical_id"], _key, result)
+            return
+        if result is FETCH_FAILED:
+            logger.warning(f"Cache warm: MDBList fetch failed for {item['canonical_id']} — stopping MDBList warming for this cycle")
+            mdblist_budget = mdblist_calls  # stop further MDBList attempts
+            return
+        await _store_warm_rating(item, result)
+
+    _groups: dict[tuple[str, str], list[dict]] = {}
+    for _item in pending_ratings:
+        _groups.setdefault((_item["provider"], _item["mdb_type"]), []).append(_item)
+    for (_provider, _mdb_type), _items in _groups.items():
+        for _i in range(0, len(_items), MDBLIST_BULK_MAX_IDS):
+            if mdblist_calls >= mdblist_budget:
+                break
+            _chunk = _items[_i:_i + MDBLIST_BULK_MAX_IDS]
+            if not mdblist_bulk_available():
+                for _item in _chunk:
+                    if mdblist_calls >= mdblist_budget:
+                        break
+                    await _warm_single(_item)
+                continue
+            _key = _warm_key()
+            if _key is None:
+                break
+            _label = f"bulk {_provider}/{_mdb_type} ({len(_chunk)} titles)"
+            async with _mdblist_semaphore:
+                await _mdblist_wait_for_slot()
+                result = await fetch_ratings_bulk(
+                    client, _key, _provider, _mdb_type,
+                    [it["media_id"] for it in _chunk],
+                    genre_ids={it["media_id"]: it["genre_ids"] for it in _chunk},
+                )
+            mdblist_calls += 1
+            mdblist_bulk_requests += 1
+            if isinstance(result, _RateLimited):
+                _on_rate_limited(_label, _key, result)
+                continue
+            if result is FETCH_FAILED:
+                # Bulk is now off for a while (or the network failed): the
+                # chunk goes the old way, one title per call, within budget.
+                logger.warning(f"Cache warm: MDBList {_label} failed — falling back to single calls")
+                for _item in _chunk:
+                    if mdblist_calls >= mdblist_budget:
+                        break
+                    await _warm_single(_item)
+                continue
+            for _item in _chunk:
+                _answer = result.get(_item["media_id"])
+                if _answer is not None:
+                    await _store_warm_rating(_item, _answer)
+                    mdblist_bulk_titles += 1
 
     if _pending_detections:
         await asyncio.gather(*_pending_detections, return_exceptions=True)
@@ -6778,7 +6874,8 @@ async def _run_cache_warm_cycle(client: httpx.AsyncClient) -> None:
             _quota_note = f", {_quota_left} MDBList daily requests left on the active key"
     logger.info(
         f"Cache warm: cycle complete — {titles_seen} titles processed, "
-        f"{tmdb_calls} TMDB calls, {mdblist_calls} MDBList calls, "
+        f"{tmdb_calls} TMDB calls, {mdblist_calls} MDBList calls "
+        f"({mdblist_bulk_requests} bulk, {mdblist_bulk_titles} titles rated in bulk), "
         f"{quality_calls} quality calls, {detection_calls} text-detection scans{_quota_note}"
     )
 
@@ -10516,6 +10613,9 @@ async def get_poster(
                 + _tmdb_sig
                 + _season_sig
                 + _anime_tmdb_sig
+                # Which award lists (award_lists.py) the title is on: a list
+                # update re-renders the posters it changes and no others.
+                + award_lists.signature(imdb_id or None)
             ).encode()
         ).hexdigest()[:16]
         # The anime key has to be part of this: the same imdb/tmdb pair renders
@@ -11420,11 +11520,17 @@ async def get_poster(
                 _mw=effective_movie_weights, _tw=effective_tv_weights,
             ):
                 nonlocal _rating_backoff_active, _mdblist_unavailable_reason
-                async with _mdblist_semaphore:
+                _skipped = (None, (
+                    cached_ratings_dict, cached_genre,
+                    cached_release_date, [], cached_age_rating,
+                ))
+
+                def _burst_paused() -> bool:
                     # Burst pause / pacing are per process, not per key, so
                     # they come before any key decision. A short pause is
                     # worth sitting out: the poster comes back complete and
                     # cacheable instead of provisional and re-rendered later.
+                    nonlocal _rating_backoff_active, _mdblist_unavailable_reason
                     _pause_left = _mdblist_ip_pause_remaining()
                     if _pause_left > _MDBLIST_BURST_WAIT_MAX:
                         logger.debug(
@@ -11433,12 +11539,11 @@ async def get_poster(
                         )
                         _rating_backoff_active = True
                         _mdblist_unavailable_reason = "MDBList burst pause active"
-                        return None, (
-                            cached_ratings_dict, cached_genre,
-                            cached_release_date, [], cached_age_rating,
-                        )
-                    await _mdblist_wait_for_slot()
-                    _fetch_key = _key
+                        return True
+                    return False
+
+                def _usable_key(_fetch_key: str) -> str | None:
+                    nonlocal _rating_backoff_active, _mdblist_unavailable_reason
                     _fetch_now = asyncio.get_running_loop().time()
                     if _fetch_now < _mdblist_key_cooldown.get(_fetch_key, 0.0):
                         _replacement_key = _next_mdblist_server_key(_fetch_key, _fetch_now)
@@ -11451,16 +11556,35 @@ async def get_poster(
                             )
                             _rating_backoff_active = True
                             _mdblist_unavailable_reason = "selected key is cooling down"
-                            return None, (
-                                cached_ratings_dict, cached_genre,
-                                cached_release_date, [], cached_age_rating,
-                            )
+                            return None
                         logger.info(
                             f"MDBList key rotated from {_mdblist_server_key_label(_fetch_key)} "
                             f"to {_mdblist_server_key_label(_replacement_key)} for {canonical_id} "
                             "before outbound fetch"
                         )
                         _fetch_key = _replacement_key
+                    return _fetch_key
+
+                if _mdblist_batcher.enabled():
+                    # Batched: the title waits for its batch without holding
+                    # the semaphore; the batch takes it once per request.
+                    if _burst_paused():
+                        return _skipped
+                    _fetch_key = _usable_key(_key)
+                    if _fetch_key is None:
+                        return _skipped
+                    return _fetch_key, await _mdblist_batcher.fetch(
+                        _client, _fetch_key, _gids, _type,
+                        media_id=_media_id, provider=_provider,
+                    )
+
+                async with _mdblist_semaphore:
+                    if _burst_paused():
+                        return _skipped
+                    await _mdblist_wait_for_slot()
+                    _fetch_key = _usable_key(_key)
+                    if _fetch_key is None:
+                        return _skipped
                     return _fetch_key, await fetch_rating(
                         _client, _fetch_key, _gids, _type,
                         media_id=_media_id, provider=_provider,
@@ -12517,6 +12641,19 @@ async def get_poster(
                 client, tmdb_id, tmdb_data.get("tmdb_release_date") or rel, effective_tmdb_key,
             )
 
+        # Cult, festival and Best Picture come from the id lists, true story
+        # from TMDB's keywords; the keyword flags above remain the fallback.
+        _list_imdb_id = effective_imdb_id or imdb_id or None
+        award_wins, award_noms, festival_keyword, is_cult, is_true_story = award_lists.derive(
+            _list_imdb_id,
+            award_wins=award_wins,
+            award_noms=award_noms,
+            festival_keyword=festival_keyword,
+            keyword_cult=is_cult,
+            keyword_true_story=is_true_story,
+            tmdb_true_story=await _db_call(tmdb_true_story, type, tmdb_id) if has_tmdb_id else None,
+        )
+
         # ------------------------------------------------------------------
         # Build DiscoveryMeta
         # ------------------------------------------------------------------
@@ -12530,6 +12667,7 @@ async def get_poster(
             release_date=rel,
             keywords=keywords if not rating_already_cached else [],
             festival_keyword=festival_keyword,
+            imdb_id=_list_imdb_id,
             is_cult_override=is_cult,
             is_true_story_override=is_true_story,
             is_metacritic_override=is_metacritic,
