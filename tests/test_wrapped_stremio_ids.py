@@ -3,8 +3,10 @@ meta ids that wrap the show's own id ("mdblist_upnext_tmdb:2190_S1E1",
 "upnext_tt0121955_trakt123", "unwatched_tt0121955"). Nuvio's {id} is all a
 client sends for them, so /poster unwraps the id and renders the show.
 
-- Every row format AIOMetadata emits unwraps to the inner id; anything else,
-  including a wrapper around an id we couldn't use, is left as it was.
+- Every row format AIOMetadata emits unwraps to the inner id.
+- Any other id we don't recognise ("had:episode:tt13491734:6:6") gives up the
+  one IMDb id that is a whole segment of it. No tt… segment, two different
+  ones, or a namespace with its own parser (kitsu:…:1:1) leaves it as it was.
 - The handler takes the unwrapped id as if a plain catalogue row had sent it:
   a tt… id as imdb_id, tmdb:… as tmdb_id, tvdb:… through the TVDB route.
 """
@@ -38,12 +40,30 @@ class UnwrapStremioIdTests(unittest.TestCase):
 
     def test_everything_else_is_left_alone(self):
         for raw in ("", "tt0121955", "tmdb:2190", "kitsu:7442", "trakt:2104",
-                    "upnext_trakt:2104_S1E1", "upnext_tt0121955", "upnext__S1E1",
-                    "unwatched_tt0121955_S1E1", "mdblist_upnext_tt12_S1E1:x",
-                    "upnext_tt0121955_S1E1_extra", "aiom.error.x"):
+                    "upnext_trakt:2104_S1E1", "upnext__S1E1", "aiom.error.x",
+                    # embedded ids: none, two different, or only part of a segment
+                    "had:episode:123:6:6", "foo:tt0121955:tt0903747",
+                    "xtt0121955:1", "foo-tt0121955abc", "had:tt12345678901",
+                    # namespaces with their own parser keep their suffixes
+                    "kitsu:7442:1:1", "tmdb:2190:tt0121955", "tvdb:75897:1:1"):
             with self.subTest(raw=raw):
                 self.assertEqual(main._unwrap_stremio_id(raw), raw)
         self.assertIsNone(main._unwrap_stremio_id(None))
+
+    def test_unknown_ids_give_up_their_imdb_id(self):
+        cases = {
+            "had:episode:tt13491734:6:6": "tt13491734",
+            "tt0121955:1:2": "tt0121955",
+            "foo/tt0121955": "tt0121955",
+            "foo:tt0121955:tt0121955": "tt0121955",
+            # AIOMetadata-shaped ids that miss its exact row format
+            "upnext_tt0121955": "tt0121955",
+            "unwatched_tt0121955_S1E1": "tt0121955",
+            "upnext_tt0121955_S1E1_extra": "tt0121955",
+        }
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(main._unwrap_stremio_id(raw), expected)
 
 
 class _Captured(Exception):
@@ -102,6 +122,10 @@ class PosterIdentityTests(unittest.TestCase):
                          ("settle", "1", "", "series"))
         self.assertEqual(self._poster("upnext_tt0121955_S1E1", imdb_id="tt1"),
                          ("settle", "", "tt1", "series"))
+
+    def test_unknown_scheme_with_an_imdb_id_renders_it(self):
+        self.assertEqual(self._poster("had:episode:tt13491734:6:6"),
+                         ("settle", "", "tt13491734", "series"))
 
     def test_unknown_wrapper_still_needs_an_id(self):
         resp = self.client.get("/poster", params={"stremio_id": "upnext_trakt:1_S1E1", "type": "series"})

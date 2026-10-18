@@ -1763,17 +1763,38 @@ _WRAPPED_STREMIO_ID_RE = re.compile(
 )
 _UNWRAPPED_ID_RE = re.compile(r'^(?:tt[0-9]{1,10}|(?:tmdb|tvdb|kitsu|anilist|mal):[0-9]{1,10})\Z')
 _TMDB_STREMIO_ID_RE = re.compile(r'^tmdb:([0-9]{1,10})\Z')
+# Any other addon's own id scheme that carries an IMDb id as one whole segment,
+# e.g. Halloween After Dark's episode rows "had:episode:tt13491734:6:6", or a
+# plain Stremio episode id "tt0121955:1:2". Only a tt… id is taken from these:
+# a bare number could be a TMDB id, a TVDB id or an episode number. Ids in a
+# namespace with its own parser keep going there, suffix and all.
+_ID_SEGMENT_SPLIT_RE = re.compile(r'[:_/]')
+_PARSED_NAMESPACES = frozenset({"tmdb", "tvdb", "kitsu", "anilist", "mal"})
+
+
+def _embedded_imdb_id(raw: str) -> str | None:
+    """The one IMDb id that is a whole segment of *raw*, or None when there is
+    none or more than one (no telling which title is meant)."""
+    segments = _ID_SEGMENT_SPLIT_RE.split(raw)
+    if segments[0].lower() in _PARSED_NAMESPACES:
+        return None
+    found = {s for s in segments if _IMDB_ID_RE.match(s)}
+    return found.pop() if len(found) == 1 else None
 
 
 def _unwrap_stremio_id(stremio_id: str) -> str:
-    """The title's own id inside one of AIOMetadata's synthetic row ids, or
-    *stremio_id* unchanged when it isn't one."""
+    """The title's own id inside one of AIOMetadata's synthetic row ids, or the
+    single IMDb id inside any other id we don't recognise; *stremio_id*
+    unchanged when it is neither."""
     raw = (stremio_id or "").strip()
-    m = _WRAPPED_STREMIO_ID_RE.match(raw)
-    if m is None:
+    if not raw or _UNWRAPPED_ID_RE.match(raw):
         return stremio_id
-    inner = m.group("row") or m.group("plain")
-    return inner if _UNWRAPPED_ID_RE.match(inner) else stremio_id
+    m = _WRAPPED_STREMIO_ID_RE.match(raw)
+    if m is not None:
+        inner = m.group("row") or m.group("plain")
+        if _UNWRAPPED_ID_RE.match(inner):
+            return inner
+    return _embedded_imdb_id(raw) or stremio_id
 
 
 async def _resolve_tvdb_identity(

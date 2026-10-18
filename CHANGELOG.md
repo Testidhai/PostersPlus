@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Other addons' ids carrying an IMDb id
+
+- A `stremio_id` that PostersPlus doesn't recognise but that holds exactly
+  one IMDb id as a whole segment now renders that title instead of a 400.
+  This covers Halloween After Dark's episode rows
+  (`had:episode:tt13491734:6:6`, previously blank tiles) and plain Stremio
+  episode ids (`tt0121955:1:2`). Only a `tt…` id is taken this way, since a
+  bare number could be any kind of id. An id with two different IMDb ids, or
+  in a namespace that has its own parser (`kitsu:`, `tmdb:`, `tvdb:`,
+  `anilist:`, `mal:`), is left as it was.
+
 ### MDBList ratings in bulk
 
 - Ratings are fetched up to 200 titles to a request. The cache warmer
