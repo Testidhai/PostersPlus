@@ -45,7 +45,8 @@ class UnwrapStremioIdTests(unittest.TestCase):
                     "had:episode:123:6:6", "foo:tt0121955:tt0903747",
                     "xtt0121955:1", "foo-tt0121955abc", "had:tt12345678901",
                     # namespaces with their own parser keep their suffixes
-                    "kitsu:7442:1:1", "tmdb:2190:tt0121955", "tvdb:75897:1:1"):
+                    "kitsu:7442:1:1", "anilist:21:tt0121955", "mal:1535:tt0121955",
+                    "tmdb:2190:tt0121955", "tvdb:75897:1:1"):
             with self.subTest(raw=raw):
                 self.assertEqual(main._unwrap_stremio_id(raw), raw)
         self.assertIsNone(main._unwrap_stremio_id(None))

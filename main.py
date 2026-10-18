@@ -1769,7 +1769,7 @@ _TMDB_STREMIO_ID_RE = re.compile(r'^tmdb:([0-9]{1,10})\Z')
 # a bare number could be a TMDB id, a TVDB id or an episode number. Ids in a
 # namespace with its own parser keep going there, suffix and all.
 _ID_SEGMENT_SPLIT_RE = re.compile(r'[:_/]')
-_PARSED_NAMESPACES = frozenset({"tmdb", "tvdb", "kitsu", "anilist", "mal"})
+_PARSED_NAMESPACES = frozenset({"tmdb", "tvdb", *anime.ID_NAMESPACES})
 
 
 def _embedded_imdb_id(raw: str) -> str | None:
