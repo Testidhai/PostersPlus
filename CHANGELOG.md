@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Landscape trending rows
+
+- The Trending Catalogs Addon can serve any of its catalogs in landscape.
+  In the trending **Configure** dialog, now wider, each list has portrait and
+  landscape icons at its right; the addon URL gains an `sh-` segment naming
+  the landscape catalogs (`sh-m:tmdb.imdb`). Instances that don't let
+  visitors pick lists show a **Landscape Rows** picker under the URL instead,
+  one per type. Those catalogs' items hand out 16:9 art as their poster, marked
+  `posterShape: "landscape"`, so a client installed straight from the URL
+  lays them out in landscape. With your poster settings in the URL the art
+  is your landscape poster; without them it is the title's backdrop (TMDB's,
+  or AniList's banner). A title with no backdrop keeps its portrait poster.
+  AIOMetadata sets its rows' shape itself and doesn't read this yet.
+
 ### Other addons' ids carrying an IMDb id
 
 - A `stremio_id` that PostersPlus doesn't recognise but that holds exactly

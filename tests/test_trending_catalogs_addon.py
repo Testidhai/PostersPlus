@@ -262,6 +262,101 @@ class AddonConfigTests(_AddonTest):
         self.assertEqual(self.client.get("/trending/sekrit/catalog/movie.json").status_code, 404)
 
 
+
+class AddonLandscapeTests(_AddonTest):
+    """An "sh-" segment names the lists whose rows are landscape: their items
+    carry 16:9 art as the poster, marked posterShape "landscape", whether or
+    not the URL carries poster settings."""
+
+    def setUp(self):
+        super().setUp()
+        self._store_with_details("movie", ["11", "22"], {
+            "11": {"name": "A", "imdb_id": "tt0000011", "poster": "/a.jpg", "backdrop": "/a-bg.jpg"},
+            "22": {"name": "B", "imdb_id": "tt0000022", "poster": "/b.jpg"},
+        }, TMDB_SIG)
+        self._store_with_details("anime", ["anilist:5"], {
+            "anilist:5": {"name": "Five", "poster": "https://img.anili.st/5.jpg",
+                          "backdrop": "https://img.anili.st/5-banner.jpg"},
+        }, "anilist")
+
+    def _metas(self, path):
+        resp = self.client.get(path)
+        self.assertEqual(resp.status_code, 200, resp.text)
+        return resp.json()["metas"]
+
+    def test_with_settings_the_poster_is_the_landscape_render(self):
+        seg = _cfg_segment("badge_display_mode=6")
+        meta = self._metas(f"/trending/sekrit/sh-m/{seg}/catalog/movie/pp.trending.movie.json")[0]
+        self.assertEqual(meta["posterShape"], "landscape")
+        self.assertEqual(_poster_query(meta["poster"])["shape"], ["landscape"])
+        self.assertEqual(meta["poster"], meta["landscapePoster"])
+        self.assertNotIn("background", meta)
+
+    def test_without_settings_the_poster_is_the_backdrop(self):
+        async def _meta(client, tmdb_id, key, media_type, lang, secondary=""):
+            return ([], False, [], "2026", "B", "/b.jpg", "/b-bg.jpg", {})
+
+        with mock.patch.object(main, "_coalesced_fetch_poster_metadata", side_effect=_meta) as fetch:
+            metas = self._metas("/trending/sekrit/sh-m/catalog/movie/pp.trending.movie.json")
+        # The stored backdrop, then TMDB's for the row that had none.
+        self.assertEqual(fetch.call_count, 1)
+        self.assertEqual([m["poster"] for m in metas], [
+            "https://image.tmdb.org/t/p/w780/a-bg.jpg", "https://image.tmdb.org/t/p/w780/b-bg.jpg"])
+        self.assertTrue(all(m["posterShape"] == "landscape" for m in metas))
+        self.assertTrue(all(m["background"] == m["poster"] for m in metas))
+
+    def test_a_title_without_a_backdrop_keeps_its_portrait_poster(self):
+        async def _meta(client, tmdb_id, key, media_type, lang, secondary=""):
+            return ([], False, [], "2026", "B", "/b.jpg", None, {})
+
+        with mock.patch.object(main, "_coalesced_fetch_poster_metadata", side_effect=_meta):
+            meta = self._metas("/trending/sekrit/sh-m/catalog/movie/pp.trending.movie.json")[1]
+        self.assertEqual(meta["poster"], "https://image.tmdb.org/t/p/w500/b.jpg")
+        self.assertEqual(meta["posterShape"], "poster")
+
+    def test_only_the_named_lists_are_landscape(self):
+        metas = self._metas("/trending/sekrit/sh-a/catalog/movie/pp.trending.movie.json")
+        self.assertTrue(all(m["posterShape"] == "poster" for m in metas))
+        anime = self._metas("/trending/sekrit/sh-a/catalog/series/pp.trending.anime.json")[0]
+        self.assertEqual(anime["posterShape"], "landscape")
+        self.assertEqual(anime["poster"], "https://img.anili.st/5-banner.jpg")
+
+    def test_without_the_segment_rows_stay_portrait(self):
+        metas = self._metas("/trending/sekrit/catalog/movie/pp.trending.movie.json")
+        self.assertTrue(all(m["posterShape"] == "poster" for m in metas))
+        self.assertTrue(all("background" not in m for m in metas))
+
+    def test_segment_order_and_unknown_letters(self):
+        seg = _cfg_segment("badge_display_mode=6")
+        for path in (f"/trending/sekrit/{seg}/sh-mzz/catalog/movie/pp.trending.movie.json",
+                     "/trending/sekrit/sh-MT/catalog/movie/pp.trending.movie.json"):
+            self.assertEqual(self._metas(path)[0]["posterShape"], "landscape", path)
+        self.assertEqual(self.client.get("/trending/sekrit/sh-m/manifest.json").status_code, 200)
+
+    def test_the_segment_names_catalogs(self):
+        self.assertEqual(main._addon_landscape_catalogs("sh-m:tmdb.imdb,t:tmdb,a"),
+                         frozenset({"movie:tmdb", "movie:imdb", "tv:tmdb", "anime"}))
+        self.assertEqual(main._addon_landscape_catalogs("sh-MT"), frozenset({"movie", "tv"}))
+        self.assertEqual(main._addon_landscape_catalogs("sh-x:tmdb,zz"), frozenset())
+
+    def test_another_catalogs_pick_leaves_this_one_portrait(self):
+        metas = self._metas("/trending/sekrit/sh-m:imdb/catalog/movie/pp.trending.movie.json")
+        self.assertTrue(all(m["posterShape"] == "poster" for m in metas))
+
+    def test_the_default_catalog_by_its_source(self):
+        metas = self._metas("/trending/sekrit/sh-m:tmdb/catalog/movie/pp.trending.movie.json")
+        self.assertEqual(metas[0]["posterShape"], "landscape")
+
+    def test_segment_does_not_bypass_the_key(self):
+        self.assertEqual(self.client.get("/trending/sh-m/manifest.json").status_code, 403)
+        self.assertEqual(
+            self.client.get("/trending/sekrit/sh-m/sh-t/manifest.json").status_code, 404)
+
+    def test_the_key_is_redacted_beside_the_segment(self):
+        self.assertEqual(main._TruncateUrlFilter._redact("/trending/sh-mt/manifest.json"),
+                         "/trending/sh-mt/manifest.json")
+
+
 class _Resp:
     def __init__(self, payload, status=200):
         self._payload = payload

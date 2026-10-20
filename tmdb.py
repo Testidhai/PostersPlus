@@ -2097,6 +2097,7 @@ def _trending_item_details(item: dict) -> dict:
         "year": str(year) if year else None,
         "imdb_id": item.get("imdb_id") if str(item.get("imdb_id") or "").startswith("tt") else None,
         "poster": item.get("poster_path") or item.get("poster"),
+        "backdrop": item.get("backdrop_path"),
     }
     out = {k: v for k, v in out.items() if v}
     # TMDB's rows: Animation from Japan, for telling anime apart when the id

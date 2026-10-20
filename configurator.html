@@ -1978,9 +1978,12 @@
     margin-top: var(--gap-label);
   }
   .trending-lists-row .btn-search { min-width: 120px; justify-content: center; }
+  /* Landscape Rows: one chip per list, four across where they fit. */
+  .trending-landscape { margin-top: var(--gap-label); }
+  .trending-landscape .tl-opts { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); margin-top: 6px; }
   /* Sized to the screen: the box never outgrows it, and only .tl-scroll
      scrolls, without carrying the scroll on to the page behind. */
-  .tl-box { max-width: 640px; max-height: 100%; min-height: 0; }
+  .tl-box { max-width: 860px; max-height: 100%; min-height: 0; }
   .tl-scroll {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -1993,7 +1996,7 @@
   .tl-scroll::-webkit-scrollbar-thumb { background: var(--black4); border-radius: 2px; }
   .trending-lists-fields { display: flex; flex-direction: column; gap: 14px; }
   .trending-lists-fields .field { margin: 0; }
-  .tl-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+  .tl-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px; }
   /* The label fills the box, padding and all, so a click anywhere inside
      the border ticks it (the padding used to be dead space). */
   .tl-opt {
@@ -2005,6 +2008,17 @@
   .tl-opt input { accent-color: var(--gold); margin: 0; }
   .tl-opt-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 9px; user-select: none; }
   .tl-opt-name em { font-style: normal; color: var(--text-secondary); }
+  /* A catalog's row shape: portrait or landscape, at the box's right. */
+  .tl-shape { display: flex; align-items: center; gap: 2px; padding: 0 6px; border-left: 1px solid var(--border); }
+  .tl-shape button {
+    display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+    padding: 0; border: 1px solid transparent; border-radius: 4px; background: none;
+    color: var(--text-secondary); cursor: pointer; opacity: 0.55;
+  }
+  .tl-shape button:hover { opacity: 1; }
+  .tl-shape button[aria-pressed="true"] { opacity: 1; color: var(--gold); border-color: var(--gold-dim); }
+  .tl-shape svg { width: 14px; height: 14px; }
+  .tl-opt:not(.on) .tl-shape { opacity: 0.45; }
   /* A box left unticked once its type is at the limit can't be picked. */
   .tl-opt-name:has(input:disabled) { cursor: not-allowed; opacity: 0.5; }
   /* Which ticked list posters drawn through the poster URL rank on: only a
@@ -2504,6 +2518,19 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
               </div>
               <div class="search-input-row">
                 <input type="text" id="trending-catalogs-url" readonly onclick="this.select()">
+              </div>
+              <!-- The lists whose rows are landscape: the URL's "sh-" segment
+                   (see trending_addon in main.py), addon-only like Trending Only.
+                   Where visitors pick lists, each catalog's shape is set in the
+                   Configure dialog instead, and this is hidden. -->
+              <div class="trending-landscape" id="trending-landscape-opts" hidden>
+                <span class="toggle-label" data-tip="Ticked rows hand out 16:9 art and say so, so the client lays them out in landscape: your landscape posters where the URL carries your settings, otherwise each title's backdrop. For installing straight into a client: AIOMetadata sets its rows' shape itself and doesn't use this yet.">Landscape Rows</span>
+                <div class="tl-opts">
+                  <div class="tl-opt"><label class="tl-opt-name"><input type="checkbox" data-shape="m" onchange="saveTrendingLandscape()"><span>Movies</span></label></div>
+                  <div class="tl-opt"><label class="tl-opt-name"><input type="checkbox" data-shape="t" onchange="saveTrendingLandscape()"><span>Series</span></label></div>
+                  <div class="tl-opt"><label class="tl-opt-name"><input type="checkbox" data-shape="a" onchange="saveTrendingLandscape()"><span>Anime</span></label></div>
+                  <div class="tl-opt"><label class="tl-opt-name"><input type="checkbox" data-shape="f" onchange="saveTrendingLandscape()"><span>Anime Movies</span></label></div>
+                </div>
               </div>
               <!-- Copy is a button because on a phone a long press on a readonly
                    input drags its caret along the URL instead of offering Copy.
@@ -4515,7 +4542,7 @@ try{if(localStorage.getItem('postersplus_theme')==='light')document.documentElem
     <div class="import-modal-title">Trending lists</div>
     <!-- Only this part scrolls: the title and the buttons stay in view. -->
     <div class="tl-scroll">
-      <div class="report-subject">Each list you tick is a catalog of its own in the Trending addon, and the addon numbers each row's posters by that row's own list. Where your poster URL draws them instead (AIOMetadata's poster pattern, Nuvio's override), one poster can only show one rank: with two or more lists ticked for a type, pick it under <b>Poster URL Ranks</b> at the bottom. Copy the addon URL and your poster URL again after changing these.</div>
+      <div class="report-subject">Each list you tick is a catalog of its own in the Trending addon, and the addon numbers each row's posters by that row's own list. Where your poster URL draws them instead (AIOMetadata's poster pattern, Nuvio's override), one poster can only show one rank: with two or more lists ticked for a type, pick it under <b>Poster URL Ranks</b> at the bottom. The icons at a list's right set its row portrait or landscape, for clients that install the addon directly. Copy the addon URL and your poster URL again after changing these.</div>
       <div class="trending-lists-fields" id="trending-lists-fields"></div>
     </div>
     <div class="report-msg err" id="trending-lists-msg" hidden></div>
@@ -6780,6 +6807,62 @@ function restoreTrendingOnly() {
   if (v !== null) document.getElementById('tog-trending-only').checked = v === '1';
 }
 
+// Addon-only too: the catalogs whose rows are landscape, as the URL's "sh-"
+// segment.  Written like trending_list, "m:tmdb.imdb,t:tmdb", where a bare
+// letter is every catalog of that list ("m,t"; see _addon_landscape_catalogs
+// in main.py).  Read as a Set of "<list>" and "<list>:<source>".
+const TRENDING_LANDSCAPE_KEY = 'postersplus_trending_landscape';
+const _TL_BY_LETTER = { m: 'movie', t: 'tv', a: 'anime', f: 'anime_movie' };
+let trendingLandscape = new Set();
+function parseTrendingLandscape(raw) {
+  const out = new Set();
+  for (const part of String(raw || '').toLowerCase().split(',')) {
+    const [letters, sources] = part.trim().split(':');
+    if (sources === undefined) {
+      for (const ch of letters) if (_TL_BY_LETTER[ch]) out.add(_TL_BY_LETTER[ch]);
+    } else if (_TL_BY_LETTER[letters]) {
+      sources.split('.').filter(Boolean).forEach(s => out.add(`${_TL_BY_LETTER[letters]}:${s}`));
+    }
+  }
+  return out;
+}
+function trendingLandscapeToken(shapes) {
+  const parts = [];
+  for (const [letter, e] of Object.entries(_TL_BY_LETTER)) {
+    if (shapes.has(e)) { parts.push(letter); continue; }
+    const ids = [...shapes].filter(k => k.startsWith(e + ':')).map(k => k.slice(e.length + 1));
+    if (ids.length) parts.push(`${letter}:${ids.join('.')}`);
+  }
+  return parts.join(',');
+}
+function isTrendingLandscape(shapes, e, id) {
+  return shapes.has(e) || shapes.has(`${e}:${id}`);
+}
+function _storeTrendingLandscape() {
+  try { localStorage.setItem(TRENDING_LANDSCAPE_KEY, trendingLandscapeToken(trendingLandscape)); } catch (e) {}
+}
+// The picker beside the URL, for instances without the Configure dialog: a
+// list ticked there is every catalog of it.
+function _paintTrendingLandscape() {
+  document.querySelectorAll('#trending-landscape-opts input').forEach(t => {
+    t.checked = [...trendingLandscape].some(k => k.split(':')[0] === _TL_BY_LETTER[t.dataset.shape]);
+    t.closest('.tl-opt').classList.toggle('on', t.checked);
+  });
+}
+function saveTrendingLandscape() {
+  trendingLandscape = new Set([...document.querySelectorAll('#trending-landscape-opts input:checked')]
+    .map(t => _TL_BY_LETTER[t.dataset.shape]));
+  _paintTrendingLandscape();
+  _storeTrendingLandscape();
+  updateTrendingCatalogsField();
+}
+function restoreTrendingLandscape() {
+  let v = '';
+  try { v = localStorage.getItem(TRENDING_LANDSCAPE_KEY) || ''; } catch (e) {}
+  trendingLandscape = parseTrendingLandscape(v);
+  _paintTrendingLandscape();
+}
+
 function updateTrendingCatalogsField() {
   const field = document.getElementById('trending-catalogs-field');
   if (!field) return;
@@ -6792,11 +6875,15 @@ function updateTrendingCatalogsField() {
   // The picked lists ride in their own segment, so a metadata addon that
   // draws its own posters (and so is sent no settings) still gets them.
   const tl = currentTrendingList();
+  const sh = trendingLandscapeToken(trendingLandscape);
   document.getElementById('trending-catalogs-url').value =
     `${domain}/trending/${ak ? encodeURIComponent(ak) + '/' : ''}${tl ? 'tl-' + tl + '/' : ''}`
-    + `${cfg ? cfg + '/' : ''}manifest.json`;
+    + `${sh ? 'sh-' + sh + '/' : ''}${cfg ? cfg + '/' : ''}manifest.json`;
   const caps = serverCaps.trending_lists;
-  document.getElementById('trending-configure-btn').style.display = caps && caps.enabled ? '' : 'none';
+  const picking = !!(caps && caps.enabled);
+  document.getElementById('trending-configure-btn').style.display = picking ? '' : 'none';
+  // With the dialog, each catalog's shape is set there.
+  document.getElementById('trending-landscape-opts').hidden = picking;
 }
 
 // ── Trending lists (trending_list=) ───────────────────────────────────────────
@@ -6880,8 +6967,34 @@ function _tlName(e, id) {
   }
   return (caps.lists[e].choices.find(ch => ch.id === id) || {}).name || id;
 }
-function _fillTrendingListsModal(pick) {
+// The dialog's shapes until Apply, as "<list>:<source>" only.
+let _tlShapeDraft = new Set();
+const _TL_SHAPE_ICONS = {
+  portrait: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="1.5" width="8" height="13" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+  landscape: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4" width="13" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+};
+function _tlShapeHtml(e, id) {
+  const land = _tlShapeDraft.has(`${e}:${id}`);
+  return `<span class="tl-shape" role="group" aria-label="Row shape">`
+    + ['portrait', 'landscape'].map(s => `<button type="button" data-shape="${s}" title="${s === 'portrait' ? 'Portrait' : 'Landscape'} row"`
+      + ` aria-pressed="${(s === 'landscape') === land}" onclick="_tlSetShape(this)">${_TL_SHAPE_ICONS[s]}</button>`).join('')
+    + `</span>`;
+}
+function _tlSetShape(btn) {
+  const tick = btn.closest('.tl-opt').querySelector('input[type="checkbox"]');
+  const key = `${tick.dataset.tl}:${tick.value}`;
+  if (btn.dataset.shape === 'landscape') _tlShapeDraft.add(key); else _tlShapeDraft.delete(key);
+  btn.parentElement.querySelectorAll('button').forEach(b =>
+    b.setAttribute('aria-pressed', String(b === btn)));
+}
+function _fillTrendingListsModal(pick, shapes = trendingLandscape) {
   const caps = serverCaps.trending_lists;
+  // A whole list picked beside the URL is each of its catalogs here.
+  _tlShapeDraft = new Set();
+  for (const e of _TL_ENDPOINTS) {
+    const ids = caps.lists[e].choices.map(ch => ch.id).concat(pick[e]);
+    ids.forEach(id => { if (isTrendingLandscape(shapes, e, id)) _tlShapeDraft.add(`${e}:${id}`); });
+  }
   const esc = t => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const rows = _TL_ENDPOINTS.map(e => {
     const picked = new Set(pick[e]);
@@ -6895,6 +7008,7 @@ function _fillTrendingListsModal(pick) {
                    onchange="_tlSync('${e}')">
             <span>${esc(ch.name)}${ch.id === caps.lists[e].default ? ' <em>(default)</em>' : ''}</span>
           </label>
+          ${_tlShapeHtml(e, ch.id)}
         </div>`).join('');
     return `
     <div class="field">
@@ -7004,7 +7118,8 @@ function _tlTop10Add() {
       if (box.querySelectorAll('input[type="checkbox"]:checked').length >= max) { full.push(_TL_NAMES[e]); continue; }
       const opt = document.createElement('div');
       opt.className = 'tl-opt';
-      opt.innerHTML = `<label class="tl-opt-name"><input type="checkbox" data-tl="${e}" onchange="_tlSync('${e}')"><span></span></label>`;
+      opt.innerHTML = `<label class="tl-opt-name"><input type="checkbox" data-tl="${e}" onchange="_tlSync('${e}')"><span></span></label>`
+        + _tlShapeHtml(e, id);
       tick = opt.querySelector('input');
       tick.value = id;
       opt.querySelector('span').textContent = _tlName(e, id);
@@ -7065,7 +7180,7 @@ function closeTrendingListsModal() {
   _popModalState('trending-lists-modal');
 }
 function resetTrendingListsModal() {
-  _fillTrendingListsModal(parseTrendingList(''));
+  _fillTrendingListsModal(parseTrendingList(''), new Set());
 }
 function applyTrendingLists() {
   const pick = {
@@ -7087,6 +7202,11 @@ function applyTrendingLists() {
     return;
   }
   document.getElementById('cfg-trending-list').value = trendingListToken(pick);
+  // Only the catalogs ticked keep a shape.
+  trendingLandscape = new Set(_TL_ENDPOINTS.flatMap(e =>
+    pick[e].filter(id => _tlShapeDraft.has(`${e}:${id}`)).map(id => `${e}:${id}`)));
+  _storeTrendingLandscape();
+  _paintTrendingLandscape();
   closeTrendingListsModal();
   build();
   queuePreviewReload();
@@ -11454,6 +11574,7 @@ if (!localStorage.getItem('postersplus_selection')) applyDefaultSelection();
 _loadShapeStash();
 restoreSettings();
 restoreTrendingOnly();
+restoreTrendingLandscape();
 // After restore, so the buttons paint the persisted value straight away.
 initSegmented();
 updateTrendingStyleFields();   // hides buttons the restored style doesn't offer

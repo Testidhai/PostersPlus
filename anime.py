@@ -335,6 +335,7 @@ query ($page: Int, $perPage: Int, $statusNot: MediaStatus, $formats: [MediaForma
       seasonYear
       startDate { year }
       coverImage { extraLarge large }
+      bannerImage
       genres
     }
   }
@@ -402,6 +403,8 @@ async def fetch_anilist_trending(
                         "name": title.get("english") or title.get("romaji"),
                         "year": str(year) if year else None,
                         "poster": cover.get("extraLarge") or cover.get("large"),
+                        # A landscape row's art (the "sh-" segment).
+                        "backdrop": media.get("bannerImage"),
                         # TMDB ids, for the catalogs' genre filter.
                         "genres": _map_genres(media.get("genres") or []),
                     }.items() if v}

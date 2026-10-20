@@ -66,7 +66,7 @@ class _TruncateUrlFilter(logging.Filter):
     # The trending addon takes the access key as a path segment
     # (/trending/<key>/manifest.json), where a query-param pattern can't see
     # it; the 80-character truncation keeps it, as it comes first.
-    _PATH_KEY_RE = re.compile(r'(/trending/)(?!cfg-|tl-|manifest\.json|catalog/)[^/\s?\'\"]+')
+    _PATH_KEY_RE = re.compile(r'(/trending/)(?!cfg-|tl-|sh-|manifest\.json|catalog/)[^/\s?\'\"]+')
 
     @classmethod
     def _redact(cls, value):
@@ -7783,6 +7783,9 @@ _TRENDING_CATALOGS = (
     ("pp.trending.anime.movie", "movie", "anime_movie", "Trending Anime Movies"),
 )
 _TMDB_POSTER_BASE = "https://image.tmdb.org/t/p/w500"
+# A landscape row's art when no poster settings ride in the URL: TMDB's
+# backdrop, at the size its 16:9 tiles need.
+_TMDB_BACKDROP_BASE = "https://image.tmdb.org/t/p/w780"
 _ADDON_HEADERS = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*"}
 
 
@@ -7983,33 +7986,43 @@ async def _trending_catalog_meta(
     details: dict, sem: asyncio.Semaphore,
     poster_cfg: "tuple[str, list, str | None] | None" = None,
     version: str | None = None,
+    landscape: bool = False,
 ) -> dict:
     """One catalog item.  An IMDb id where we have one, since every client and
     metadata addon understands it; otherwise the namespaced TMDB or AniList id.
 
     *poster_cfg* is (base, settings, access key) when the addon URL carried
     poster settings: the item's poster, and its landscape poster, are then
-    Posters+ renders of it."""
+    Posters+ renders of it.
+
+    *landscape* is a row the visitor asked for in landscape (the "sh-"
+    segment): its poster is then 16:9 art and says so in posterShape, since a
+    client lays a row out by its items' shape and most never read
+    landscapePoster.  That is the landscape render where there are poster
+    settings, else the title's backdrop; a title with no backdrop keeps its
+    portrait poster, still marked as one, rather than have it cropped."""
     detail = details.get(entry_id) or {}
     # AniList's rows are "anilist:<id>"; everything else (an anime list from a
     # custom source too) is a TMDB id of the list's kind.
     by_anilist = entry_id.startswith("anilist:")
     kind = trending_kind(endpoint)
-    if (not by_anilist and not (detail.get("name") and detail.get("poster"))
-            and (poster_cfg is None or not detail.get("name")) and _cfg.SERVER_TMDB_KEY):
+    # Art is only wanted where the row isn't drawn by Posters+.
+    want_backdrop = landscape and poster_cfg is None and not detail.get("backdrop")
+    if (not by_anilist and _cfg.SERVER_TMDB_KEY
+            and (want_backdrop or (not (detail.get("name") and detail.get("poster"))
+                                   and (poster_cfg is None or not detail.get("name"))))):
         # A snapshot written before details were stored (or a source whose
-        # rows carry no title, or no art, as MDBList's) has only ids; the art
-        # is only wanted where the row isn't drawn by Posters+.  Replacing it
-        # early would move ranks under posters already cached, so fill the
-        # gaps from the TMDB metadata the poster renders cache anyway.
+        # rows carry no title, or no art, as MDBList's) has only ids.
+        # Replacing it early would move ranks under posters already cached, so
+        # fill the gaps from the TMDB metadata the poster renders cache anyway.
         async with sem:
             try:
-                (_g, _t, _l, year, title, poster_path, _b, _d) = await _coalesced_fetch_poster_metadata(
+                (_g, _t, _l, year, title, poster_path, backdrop_path, _d) = await _coalesced_fetch_poster_metadata(
                     client, entry_id, _cfg.SERVER_TMDB_KEY, kind, _cfg.DEFAULT_LOGO_LANGUAGE,
                 )
                 # Gaps only: what the list's own row says stays.
                 detail = {**{k: v for k, v in {
-                    "name": title, "year": year, "poster": poster_path,
+                    "name": title, "year": year, "poster": poster_path, "backdrop": backdrop_path,
                 }.items() if v}, **detail}
             except Exception as exc:
                 logger.warning(f"Trending catalog: no TMDB details for {endpoint} {entry_id}: {exc}")
@@ -8025,7 +8038,7 @@ async def _trending_catalog_meta(
                 except IdResolveError:
                     imdb_id = None
         meta_id = imdb_id or f"tmdb:{entry_id}"
-    landscape = None
+    want_landscape, landscape = landscape, None
     if poster_cfg is not None:
         base, settings, key = poster_cfg
         poster = _addon_poster_url(base, settings, key, endpoint, ctype, entry_id, imdb_id,
@@ -8040,13 +8053,24 @@ async def _trending_catalog_meta(
         poster = detail.get("poster")
         if poster and poster.startswith("/"):
             poster = _TMDB_POSTER_BASE + poster
+    shape = "poster"
+    background = None
+    if want_landscape:
+        if landscape is None:
+            background = detail.get("backdrop")
+            if background and background.startswith("/"):
+                background = _TMDB_BACKDROP_BASE + background
+            landscape = background
+        if landscape:
+            poster, shape = landscape, "landscape"
     meta = {
         "id": meta_id,
         "type": ctype,
         "name": detail.get("name") or meta_id,
         "poster": poster,
         "landscapePoster": landscape,
-        "posterShape": "poster",
+        "background": background,
+        "posterShape": shape,
         "releaseInfo": detail.get("year"),
     }
     return {k: v for k, v in meta.items() if v}
@@ -8056,6 +8080,7 @@ async def _trending_catalog(
     key: str | None, ctype: str, cid: str, extra: str | None,
     poster_cfg: "tuple[str, list, str | None] | None" = None,
     lists: "trending_lists.TrendingLists | None" = None,
+    landscape_catalogs: "frozenset[str]" = frozenset(),
 ) -> JSONResponse:
     spec = _resolve_trending_catalog(cid, ctype)
     if spec is None:
@@ -8067,6 +8092,7 @@ async def _trending_catalog(
     except ValueError:
         skip = 0
 
+    landscape = endpoint in landscape_catalogs or f"{endpoint}:{source}" in landscape_catalogs
     # This catalog's own list: its source, ranked as the posters in it are.
     lists = (lists or trending_lists.default()).for_catalog(endpoint, source)
     if poster_cfg is not None:
@@ -8093,7 +8119,7 @@ async def _trending_catalog(
     sem = asyncio.Semaphore(8)
     metas = await asyncio.gather(*(
         _trending_catalog_meta(_HTTP_CLIENT, entry_id, ctype, endpoint, details, sem, poster_cfg,
-                               version)
+                               version, landscape=landscape)
         for entry_id in ordered
     ))
     # Cached no longer than the snapshot, like the posters that print its ranks,
@@ -8113,11 +8139,37 @@ async def _trending_catalog(
 # still be the lists the visitor picked.
 _ADDON_LISTS_PREFIX = "tl-"
 
+# The catalogs whose rows are landscape ride in an "sh-" segment of their own,
+# written like trending_list: "sh-m:tmdb.imdb,t:tmdb" is the Movies catalogs
+# from TMDB and IMDb and the Series one from TMDB.  A bare letter is every
+# catalog of that list ("sh-mt").  Kept apart from the other segments so the
+# choice reaches a metadata addon sent neither poster settings nor lists.  What
+# it doesn't know is ignored, so an old URL never breaks.
+_ADDON_SHAPE_PREFIX = "sh-"
+_ADDON_SHAPE_LETTERS = {"m": "movie", "t": "tv", "a": "anime", "f": "anime_movie"}
+
+
+def _addon_landscape_catalogs(segment: "str | None") -> "frozenset[str]":
+    """The catalogs an "sh-" segment names as landscape: "<list>" for every
+    catalog of a list, "<list>:<source>" for one."""
+    if not segment:
+        return frozenset()
+    out = set()
+    for part in segment[len(_ADDON_SHAPE_PREFIX):].lower()[:1200].split(","):
+        letters, sep, sources = part.strip().partition(":")
+        if not sep:
+            out.update(_ADDON_SHAPE_LETTERS[ch] for ch in letters if ch in _ADDON_SHAPE_LETTERS)
+        elif letters in _ADDON_SHAPE_LETTERS:
+            endpoint = _ADDON_SHAPE_LETTERS[letters]
+            out.update(f"{endpoint}:{s.strip()}" for s in sources.split(".") if s.strip())
+    return frozenset(out)
+
 
 @app.get("/trending/{rest:path}")
 async def trending_addon(rest: str, request: Request):
     """Every addon path: an optional access key segment, an optional "tl-"
-    lists segment and an optional "cfg-" settings segment, then manifest.json
+    lists segment, an optional "sh-" landscape segment and an optional "cfg-"
+    settings segment, then manifest.json
     or catalog/<type>/<id>[/<extra>].json.  Parsed by hand because any
     leading segment may be absent."""
     segs = rest.split("/")
@@ -8129,13 +8181,16 @@ async def trending_addon(rest: str, request: Request):
     else:
         raise HTTPException(status_code=404, detail="Not Found")
 
-    key = cfg_seg = lists_seg = None
+    key = cfg_seg = lists_seg = shape_seg = None
     for seg in prefix:
         if seg.startswith(_ADDON_CFG_PREFIX) and cfg_seg is None:
             cfg_seg = seg
         elif seg.startswith(_ADDON_LISTS_PREFIX) and lists_seg is None:
             lists_seg = seg
-        elif key is None and seg and not seg.startswith((_ADDON_CFG_PREFIX, _ADDON_LISTS_PREFIX)):
+        elif seg.startswith(_ADDON_SHAPE_PREFIX) and shape_seg is None:
+            shape_seg = seg
+        elif key is None and seg and not seg.startswith(
+                (_ADDON_CFG_PREFIX, _ADDON_LISTS_PREFIX, _ADDON_SHAPE_PREFIX)):
             key = seg
         else:
             raise HTTPException(status_code=404, detail="Not Found")
@@ -8165,7 +8220,8 @@ async def trending_addon(rest: str, request: Request):
         # The posters rank on the list the row was cut from, whatever the
         # settings said (see _trending_catalog).
         poster_cfg = (_public_base(request), settings, key)
-    response = await _trending_catalog(key, ctype, cid, extra, poster_cfg, lists)
+    response = await _trending_catalog(key, ctype, cid, extra, poster_cfg, lists,
+                                       _addon_landscape_catalogs(shape_seg))
     if poster_cfg is not None and not _cfg.PUBLIC_URL:
         response.headers["Vary"] = _FORWARDED_VARY
     return response
