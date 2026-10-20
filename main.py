@@ -8038,14 +8038,14 @@ async def _trending_catalog_meta(
                 except IdResolveError:
                     imdb_id = None
         meta_id = imdb_id or f"tmdb:{entry_id}"
-    want_landscape, landscape = landscape, None
+    landscape_url = None
     if poster_cfg is not None:
         base, settings, key = poster_cfg
         poster = _addon_poster_url(base, settings, key, endpoint, ctype, entry_id, imdb_id,
                                    version=version)
         # The same settings drawn 16:9, for clients that lay a row out in
         # landscape (Nuvio reads it from here, as AIOMetadata supplies it).
-        landscape = _addon_poster_url(
+        landscape_url = _addon_poster_url(
             base, settings, key, endpoint, ctype, entry_id, imdb_id, shape="landscape",
             version=version,
         )
@@ -8055,20 +8055,20 @@ async def _trending_catalog_meta(
             poster = _TMDB_POSTER_BASE + poster
     shape = "poster"
     background = None
-    if want_landscape:
-        if landscape is None:
+    if landscape:
+        if landscape_url is None:
             background = detail.get("backdrop")
             if background and background.startswith("/"):
                 background = _TMDB_BACKDROP_BASE + background
-            landscape = background
-        if landscape:
-            poster, shape = landscape, "landscape"
+        art = landscape_url or background
+        if art:
+            poster, shape = art, "landscape"
     meta = {
         "id": meta_id,
         "type": ctype,
         "name": detail.get("name") or meta_id,
         "poster": poster,
-        "landscapePoster": landscape,
+        "landscapePoster": landscape_url,
         "background": background,
         "posterShape": shape,
         "releaseInfo": detail.get("year"),
