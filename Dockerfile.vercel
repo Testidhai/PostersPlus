@@ -1,4 +1,7 @@
 
 FROM ghcr.io/umbraprojects/postersplus:dev
 
-RUN rm -rf /app/cache && ln -s /tmp/postersplus-cache /app/cache
+RUN rm -rf /app/cache && \
+    mkdir -p /tmp/postersplus-cache/tmdb_posters /tmp/postersplus-cache/tmdb_logos && \
+    chown -R appuser:appuser /tmp/postersplus-cache && \
+    ln -s /tmp/postersplus-cache /app/cache
